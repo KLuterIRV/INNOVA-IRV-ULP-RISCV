@@ -1,20 +1,46 @@
-<!---
+# Minimal RV32E SoC with UART Loader
 
-This file is used to generate your project datasheet. Please fill in the information below and delete any unused
-sections.
+This project implements a minimal RV32E-based microcontroller for Tiny Tapeout.
 
-You can also include images in this folder and reference them in the markdown. Each image must be less than
-512 kb in size, and the combined size of all images must be less than 1 MB.
--->
+## Features
 
-## How it works
+- Simplified RV32E CPU core
+- 16 x 32-bit register file
+- Internal instruction memory, programmable through UART
+- Internal data memory and memory-mapped peripherals
+- UART RX program loader
+- UART TX output
+- Shared 8-bit GPIO / seven-segment output
+- Configurable seven-segment mode:
+  - GPIO mode
+  - HEX mode
+  - ASCII mode
+  - RAW segment mode
+- `ebreak`-based halt/debug signal
 
-Explain how your project works
+## Pinout
 
-## How to test
+| Pin | Function |
+|---|---|
+| `ui_in[0]` | Boot mode enable |
+| `ui_in[1]` | UART RX |
+| `uo_out[7:0]` | GPIO output or seven-segment output |
+| `uio_out[0]` | UART TX |
+| `uio_out[1]` | Core halted debug |
+| `uio_out[2]` | Loader done debug |
+| `uio_out[3]` | Loader error debug |
 
-Explain how to use your project
+## UART loader protocol
 
-## External hardware
+The loader is enabled when `boot_mode = 1`.
 
-List external hardware used in your project (e.g. PMOD, LED display, etc), if any
+Protocol:
+
+```text
+0x55
+N_WORDS
+WORD0 byte0
+WORD0 byte1
+WORD0 byte2
+WORD0 byte3
+...
