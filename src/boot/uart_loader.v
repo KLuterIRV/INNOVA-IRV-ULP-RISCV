@@ -57,7 +57,10 @@ module uart_loader #(
     reg [7:0] words_total;            // Número total de palabras a cargar
     reg [7:0] word_index;             // Índice de palabra actual
     reg [1:0] byte_index;             // Índice de byte dentro de la palabra
-    reg [31:0] word_buf;              // Buffer temporal de palabra little-endian
+    reg [23:0] word_buf;              // Buffer temporal de palabra little-endian
+
+    wire _unused_uart_loader;                       // Señal dummy para evitar advertencias de señales no conectadas
+    assign _unused_uart_loader = &{rx_busy, 1'b0};  // Evita advertencia de rx_busy no conectado, aunque no se use en la lógica del loader
 
     // ------------------------------------------------------------
     // UART RX interna del loader
@@ -89,7 +92,7 @@ module uart_loader #(
             words_total <= 8'd0;               // Limpia número de palabras
             word_index  <= 8'd0;               // Limpia índice de palabra
             byte_index  <= 2'd0;               // Limpia índice de byte
-            word_buf    <= 32'd0;              // Limpia buffer
+            word_buf    <= 24'd0;              // Limpia buffer
 
         end else begin                         // Funcionamiento normal
             prog_we <= 1'b0;                   // prog_we es un pulso de un ciclo
@@ -101,7 +104,7 @@ module uart_loader #(
                 words_total <= 8'd0;           // Limpia contador total
                 word_index  <= 8'd0;           // Limpia índice de palabra
                 byte_index  <= 2'd0;           // Limpia índice de byte
-                word_buf    <= 32'd0;          // Limpia palabra parcial
+                word_buf    <= 24'd0;          // Limpia palabra parcial
 
             end else begin                     // Loader habilitado
 
@@ -131,7 +134,7 @@ module uart_loader #(
                                 words_total <= rx_data; // Guarda número total
                                 word_index  <= 8'd0;    // Empieza en palabra 0
                                 byte_index  <= 2'd0;    // Empieza en byte 0
-                                word_buf    <= 32'd0;   // Limpia buffer
+                                word_buf    <= 24'd0;   // Limpia buffer
 
                                 if (rx_data == 8'd0) begin // Si N=0
                                     state <= ST_DONE;   // Termina inmediatamente
@@ -167,7 +170,7 @@ module uart_loader #(
                                         prog_we    <= 1'b1;       // Pulso de escritura
 
                                         byte_index <= 2'd0;       // Reinicia byte_index
-                                        word_buf   <= 32'd0;      // Limpia buffer temporal
+                                        word_buf   <= 24'd0;      // Limpia buffer temporal
 
                                         if (word_index == words_total - 8'd1) begin // Si era la última palabra
                                             state <= ST_DONE;     // Termina carga

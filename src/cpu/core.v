@@ -150,6 +150,10 @@ module core (
     assign pc_debug    = pc;                    // Exporta PC
     assign instr_debug = instr;                 // Exporta instrucción actual
 
+    // Mark intentionally unused decoder outputs for GDS flow to work correctly
+    wire _unused_core;                          // define una señal para marcar outputs no usados
+    assign _unused_core = &{funct7, 1'b0};      // Marca funct7 como no usado (en RV32E no se usa) y evita warnings
+
     // Detección de ebreak
     assign is_ebreak    = (instr == 32'h00100073); // EBREAK codificado completo
     assign halted_debug = halted;                  // Exporta flag halted

@@ -32,6 +32,12 @@ module dmem (                                      // Módulo de memoria de dato
     reg [31:0] mem [0:255];                        // Memoria de datos interna: 256 words x 32 bits
     integer i;                                     // Variable auxiliar para inicialización/reset
 
+    initial begin                                  // Inicialización de la memoria a cero
+        for (i = 0; i < 256; i = i + 1) begin
+            mem[i] = 32'd0;
+        end
+    end
+
     // ============================================================
     // GPIO + SEVEN SEGMENT SHARED OUTPUT
     // ============================================================
@@ -74,6 +80,9 @@ module dmem (                                      // Módulo de memoria de dato
     reg [7:0]  uart0_tx_data;                      // Byte registrado que se enviará por UART TX
     wire       uart0_busy;                         // UART TX ocupada transmitiendo
     wire       uart0_done;                         // Pulso de fin de transmisión UART TX
+
+    wire _unused_dmem;                             // Señal dummy para evitar advertencias de señales no conectadas
+    assign _unused_dmem = &{uart0_done, 1'b0};     // Evita advertencia de uart0_done no conectado, aunque no se use en la lógica del dmem
 
     uart_tx #(                                    // Instancia UART TX
         .CLK_FREQ_HZ(60000000),                   // Frecuencia de reloj del sistema: 60 MHz
@@ -130,10 +139,7 @@ module dmem (                                      // Módulo de memoria de dato
             uart0_rx_data_reg            <= 8'd0; // Limpia dato RX latched
             uart0_rx_valid_latched       <= 1'b0; // Limpia flag RX válido
             uart0_rx_framing_error_latched <= 1'b0; // Limpia flag de framing error
-
-            for (i = 0; i < 256; i = i + 1) begin // Recorre toda la memoria interna
-                mem[i] = 32'd0;                   // Inicializa memoria a cero
-            end
+            
         end else begin                            // Funcionamiento normal
             uart0_tx_start <= 1'b0;               // Por defecto, TX start es un pulso de un ciclo
 
