@@ -22,9 +22,13 @@ module imem (
 
     reg [31:0] mem [0:255];         // Memoria de 256 palabras de 32 bits
 
-    // Carga inicial desde fichero HEX
+    // Inicializar el codigo como 0
+    integer i;
+
     initial begin
-        $readmemh("mem/program.hex", mem); // Precarga memoria de instrucciones
+        for (i = 0; i < 256; i = i + 1) begin
+            mem[i] = 32'd0;
+        end
     end
 
     // Programación por UART loader
