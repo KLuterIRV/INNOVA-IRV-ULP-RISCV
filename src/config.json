@@ -32,6 +32,7 @@
   "CLOCK_PORT": "clk",
 
   "//": "Configuration docs: https://librelane.readthedocs.io/en/latest/reference/configuration.html",
+  
     "MACROS": {
     "gf180mcu_fd_ip_sram__sram64x8m8wm1": {
       "gds": [
@@ -47,12 +48,16 @@
       },
       "instances": {
         "u_sram_test.u_sram": {
-          "location": [20, 20],
+          "location": [40, 40],
           "orientation": "N"
         }
       }
     }
   },
+
+    "PDN_MACRO_CONNECTIONS": [
+    "u_sram_test.u_sram VDD VSS VDD VSS"
+  ],
 
   "//": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
   "//": "!!! DO NOT CHANGE ANYTHING BELOW THIS POINT !!!",
