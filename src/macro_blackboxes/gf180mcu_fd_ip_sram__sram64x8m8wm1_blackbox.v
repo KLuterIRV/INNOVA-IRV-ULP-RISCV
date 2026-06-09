@@ -1,5 +1,8 @@
 `default_nettype none
 
+/* verilator lint_off UNUSEDSIGNAL */
+/* verilator lint_off UNDRIVEN */
+
 (* blackbox *)
 module gf180mcu_fd_ip_sram__sram64x8m8wm1 (
     input  wire       CLK,
@@ -13,6 +16,12 @@ module gf180mcu_fd_ip_sram__sram64x8m8wm1 (
     input  wire       VSS
 );
 
+/* synthesis syn_black_box */
+/* synopsys syn_black_box */
+
 endmodule
+
+/* verilator lint_on UNDRIVEN */
+/* verilator lint_on UNUSEDSIGNAL */
 
 `default_nettype wire
