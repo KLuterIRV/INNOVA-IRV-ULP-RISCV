@@ -69,11 +69,11 @@ module tt_um_innova_irv_ulp_riscv (
     reg dmem_wr_en;
     reg reg_wr_en;
 
-    wire [6:0] imem_addr;
-    wire [4:0] dmem_addr;
+    wire [5:0] imem_addr;
+    wire [3:0] dmem_addr;
 
-    assign imem_addr = {imem_addr_hi, addr_lo};
-    assign dmem_addr = addr_lo;
+    assign imem_addr = {imem_addr_hi[0], addr_lo};
+    assign dmem_addr = addr_lo[3:0];
 
     wire [31:0] imem_rdata;
     wire [31:0] dmem_rdata;
@@ -205,7 +205,7 @@ module tt_um_innova_irv_ulp_riscv (
     end
 
     latch_mem_1r1w #(
-        .ADDR_BITS  (7),
+        .ADDR_BITS  (6),
         .DATA_WIDTH (32)
     ) u_imem (
         .wr_en   (imem_wr_en),
@@ -216,7 +216,7 @@ module tt_um_innova_irv_ulp_riscv (
     );
 
     latch_mem_1r1w #(
-        .ADDR_BITS  (5),
+        .ADDR_BITS  (4),
         .DATA_WIDTH (32)
     ) u_dmem (
         .wr_en   (dmem_wr_en),
