@@ -32,6 +32,27 @@
   "CLOCK_PORT": "clk",
 
   "//": "Configuration docs: https://librelane.readthedocs.io/en/latest/reference/configuration.html",
+    "MACROS": {
+    "gf180mcu_fd_ip_sram__sram64x8m8wm1": {
+      "gds": [
+        "dir::../third_party/gf180mcu_fd_ip_sram/cells/gf180mcu_fd_ip_sram__sram64x8m8wm1/gf180mcu_fd_ip_sram__sram64x8m8wm1.gds"
+      ],
+      "lef": [
+        "dir::../third_party/gf180mcu_fd_ip_sram/cells/gf180mcu_fd_ip_sram__sram64x8m8wm1/gf180mcu_fd_ip_sram__sram64x8m8wm1.lef"
+      ],
+      "lib": {
+        "*": [
+          "dir::../third_party/gf180mcu_fd_ip_sram/cells/gf180mcu_fd_ip_sram__sram64x8m8wm1/gf180mcu_fd_ip_sram__sram64x8m8wm1__tt_025C_5v00.lib"
+        ]
+      },
+      "instances": {
+        "u_sram_test.u_sram": {
+          "location": [20, 20],
+          "orientation": "N"
+        }
+      }
+    }
+  },
 
   "//": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
   "//": "!!! DO NOT CHANGE ANYTHING BELOW THIS POINT !!!",
