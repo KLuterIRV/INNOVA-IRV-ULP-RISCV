@@ -18,7 +18,8 @@ project:
   # Don't forget to also update `PROJECT_SOURCES` in test/Makefile.
   source_files:
     - "tt_um_innova_irv_ulp_riscv.v"
-    - "mem/latch_mem_2r1w.v"
+    - "mem/latch_mem_1r1w.v"
+    - "mem/latch_regfile_2r1w.v"
     - "mem/gf180_latch_bit.v"
 
 # The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
