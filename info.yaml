@@ -1,6 +1,6 @@
 # Tiny Tapeout project information
 project:
-  title:        "INNOVA IRV ULP RISC-V Latch Memory"      # Project title
+  title:        "INNOVA-IRV-ULP-RISCV"      # Project title
   author:       "Kristian Thomas Luter Arregui"      # Your name
   discord:      ""      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
   description:  "Minimal RV32E microcontroller with UART program loader, internal instruction memory, GPIO and configurable 7-segment output"      # One line description of what your project does
@@ -19,19 +19,20 @@ project:
   source_files:
     - "tt_um_innova_irv_ulp_riscv.v"
     - "mem/latch_mem_2r1w.v"
+    - "mem/gf180_latch_bit.v"
 
 # The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
 # This section is for the datasheet/website. Use descriptive names (e.g., RX, TX, MOSI, SCL, SEG_A, etc.).
 pinout:
   # Inputs
-  ui[0]: "cmd[0]"
-  ui[1]: "cmd[1]"
-  ui[2]: "data_or_addr[0]"
-  ui[3]: "data_or_addr[1]"
-  ui[4]: "data_or_addr[2]"
-  ui[5]: "data_or_addr[3]"
-  ui[6]: "data_or_addr[4]"
-  ui[7]: "data_or_addr[5]"
+  ui[0]: "payload[0]"
+  ui[1]: "payload[1]"
+  ui[2]: "payload[2]"
+  ui[3]: "payload[3]"
+  ui[4]: "payload[4]"
+  ui[5]: "payload[5]"
+  ui[6]: "cmd[0]"
+  ui[7]: "cmd[1]"
 
   # Outputs
   uo[0]: "read_port_a[0]"
@@ -44,14 +45,14 @@ pinout:
   uo[7]: "read_port_a[7]"
 
   # Bidirectional pins
-  uio[0]: "read_port_b[0]"
-  uio[1]: "read_port_b[1]"
-  uio[2]: "read_port_b[2]"
-  uio[3]: "read_port_b[3]"
-  uio[4]: "read_port_b[4]"
-  uio[5]: "read_port_b[5]"
-  uio[6]: "read_port_b[6]"
-  uio[7]: "read_port_b[7]"
+  uio[0]: "write_data[0] / read_port_b[0]"
+  uio[1]: "write_data[1] / read_port_b[1]"
+  uio[2]: "write_data[2] / read_port_b[2]"
+  uio[3]: "write_data[3] / read_port_b[3]"
+  uio[4]: "write_data[4] / read_port_b[4]"
+  uio[5]: "write_data[5] / read_port_b[5]"
+  uio[6]: "write_data[6] / read_port_b[6]"
+  uio[7]: "write_data[7] / read_port_b[7]"
 
 # Do not change!
 yaml_version: 6

@@ -6,18 +6,9 @@ SIM ?= icarus
 FST ?= -fst # Use more efficient FST format
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
-PROJECT_SOURCES = tt_um_kluterirv_rv32e_core.v \
-                  top/soc_top.v \
-                  cpu/core.v \
-                  cpu/alu.v \
-                  cpu/decoder.v \
-                  cpu/regfile.v \
-                  mem/imem.v \
-                  peripherals/dmem.v \
-                  peripherals/sevenseg.v \
-                  peripherals/uart_tx.v \
-                  peripherals/uart_rx.v \
-                  boot/uart_loader.v
+PROJECT_SOURCES = tt_um_innova_irv_ulp_riscv.v \
+                  mem/latch_mem_2r1w.v \
+                  mem/gf180_latch_bit.v
 
 ifneq ($(GATES),yes)
 
