@@ -24,9 +24,7 @@ module sram_macro_smoke_test (
         .WEN  (wen),
         .A    (addr),
         .D    (wdata),
-        .Q    (rdata),
-        .VDD  (1'b1),
-        .VSS  (1'b0)
+        .Q    (rdata)
     );
 
     wire _unused;

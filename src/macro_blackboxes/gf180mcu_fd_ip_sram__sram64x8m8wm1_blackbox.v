@@ -11,9 +11,7 @@ module gf180mcu_fd_ip_sram__sram64x8m8wm1 (
     input  wire [7:0] WEN,
     input  wire [5:0] A,
     input  wire [7:0] D,
-    output wire [7:0] Q,
-    input  wire       VDD,
-    input  wire       VSS
+    output wire [7:0] Q
 );
 
 /* synthesis syn_black_box */
