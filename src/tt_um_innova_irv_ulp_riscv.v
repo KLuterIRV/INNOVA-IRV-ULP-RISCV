@@ -1,5 +1,4 @@
 `default_nettype none
-`timescale 1ns/1ps
 
 module tt_um_innova_irv_ulp_riscv (
     input  wire [7:0] ui_in,

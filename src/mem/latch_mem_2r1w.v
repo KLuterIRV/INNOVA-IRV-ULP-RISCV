@@ -1,5 +1,4 @@
 `default_nettype none
-`timescale 1ns/1ps
 
 module latch_mem_2r1w #(
     parameter ADDR_BITS  = 6,
