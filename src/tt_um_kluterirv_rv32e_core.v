@@ -15,12 +15,12 @@ module tt_um_kluterirv_rv32e_core (
     assign rst = ~rst_n;
 
     wire        sram_we;
-    wire [6:0]  sram_addr;
+    wire [5:0]  sram_addr;
     wire [7:0]  sram_wdata;
     wire [7:0]  sram_rdata;
 
     assign sram_we    = ui_in[0];
-    assign sram_addr  = {uio_in[5:0], ui_in[1]};
+    assign sram_addr  = {uio_in[5:1], ui_in[1]};
     assign sram_wdata = {ui_in[7:2], uio_in[1:0]};
 
     sram_macro_smoke_test u_sram_test (
@@ -36,6 +36,9 @@ module tt_um_kluterirv_rv32e_core (
 
     assign uio_out = 8'd0;
     assign uio_oe  = 8'd0;
+
+    wire _unused;
+    assign _unused = &{uio_in[7:6], 1'b0};
 
 endmodule
 

@@ -4,7 +4,7 @@ module sram_macro_smoke_test (
     input  wire       clk,
     input  wire       rst,
     input  wire       we,
-    input  wire [6:0] addr,
+    input  wire [5:0] addr,
     input  wire [7:0] wdata,
     output wire [7:0] rdata
 );
@@ -13,9 +13,9 @@ module sram_macro_smoke_test (
     wire gwen;
     wire [7:0] wen;
 
-    assign cen  = 1'b0;              // Active-low chip enable: always enabled
-    assign gwen = ~we;               // Active-low global write enable
-    assign wen  = we ? 8'h00 : 8'hFF; // Active-low byte/bit write mask
+    assign cen  = 1'b0;               // Active-low chip enable
+    assign gwen = ~we;                // Active-low global write enable
+    assign wen  = we ? 8'h00 : 8'hFF; // Active-low write mask
 
     gf180mcu_fd_ip_sram__sram64x8m8wm1 u_sram (
         .CLK  (clk),
@@ -24,7 +24,9 @@ module sram_macro_smoke_test (
         .WEN  (wen),
         .A    (addr),
         .D    (wdata),
-        .Q    (rdata)
+        .Q    (rdata),
+        .VDD  (1'b1),
+        .VSS  (1'b0)
     );
 
     wire _unused;
