@@ -56,12 +56,17 @@
   },
 
   "PDN_MACRO_CONNECTIONS": [
-    "u_sram VDD VSS VDD VSS"
+    "u_sram VDD VSS VPWR VGND"
   ],
 
   "//": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
   "//": "!!! DO NOT CHANGE ANYTHING BELOW THIS POINT !!!",
   "//": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+
+    "//": "Use KLayout streamout as primary GDS output for SRAM macro integration",
+  "PRIMARY_GDSII_STREAMOUT_TOOL": "klayout",
+  "RUN_MAGIC_STREAMOUT": 0,
+  "RUN_KLAYOUT_STREAMOUT": 1,
 
   "//": "Save some time",
   "RUN_KLAYOUT_XOR": 0,
