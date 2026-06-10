@@ -12,7 +12,7 @@ module tt_um_kluterirv_rv32e_core (
 );
 
     // ============================================================
-    // Unified 64x16 SRAM + minimal RV32E core
+    // Phase 1 minimal RV32E demo core + unified 64x16 SRAM
     // ============================================================
     //
     // Physical SRAM:
@@ -22,30 +22,39 @@ module tt_um_kluterirv_rv32e_core (
     // Logical SRAM:
     //   64 x 16-bit halfwords = 128 bytes
     //
-    // RV32 instruction fetch:
-    //   each 32-bit instruction is fetched in two 16-bit reads:
-    //     PC[6:1]     -> instr[15:0]
-    //     PC[6:1] + 1 -> instr[31:16]
+    // Instruction memory capacity:
+    //   32 RV32 instructions maximum.
+    //
+    // Supported instructions for phase 1:
+    //   ADDI
+    //   LUI
+    //   SW to memory-mapped GPIO at 0x1000_0000
+    //   EBREAK
+    //
+    // Test program:
+    //   addi x1, x0, 0x55
+    //   lui  x2, 0x10000
+    //   sw   x1, 0(x2)
+    //   ebreak
+    //
+    // Expected:
+    //   uo_out = 0x55
     //
     // Boot/programming mode:
     //   Hold rst_n = 0.
     //   ui_in[0]   = write enable
-    //   ui_in[7:1] = byte address
+    //   ui_in[7:1] = byte address 0..127
     //   uio_in     = byte write data
     //
     // Run mode:
     //   Release rst_n = 1.
     //   Core starts at PC = 0.
-    //
-    // Output:
-    //   uo_out = GPIO/debug output register in run mode.
-    //   uo_out = selected SRAM byte in reset/programming mode.
 
     wire rst;
     assign rst = ~rst_n;
 
     // ============================================================
-    // SRAM boot/write interface
+    // Boot/programming interface
     // ============================================================
 
     wire        boot_mode;
@@ -78,55 +87,57 @@ module tt_um_kluterirv_rv32e_core (
     reg        halted;
     reg [7:0]  out_reg;
 
-    // RV32E register file: x0..x15
-    reg [31:0] rf [0:15];
-
-    integer i;
+    // Phase-1 minimal register file:
+    // Only x1 and x2 are physically implemented.
+    // x0 is hardwired to zero.
+    //
+    // This avoids the large 16x32 DFF register file that made
+    // the previous core too large for 4x2 with 2 SRAM macros.
+    reg [31:0] x1;
+    reg [31:0] x2;
 
     // ============================================================
-    // Decode fields
+    // Instruction decode
     // ============================================================
 
     wire [6:0] opcode;
     wire [2:0] funct3;
-    wire [6:0] funct7;
-    wire [3:0] rs1;
-    wire [3:0] rs2;
-    wire [3:0] rd;
+    wire [4:0] rd;
+    wire [4:0] rs1;
+    wire [4:0] rs2;
 
     assign opcode = instr_reg[6:0];
+    assign rd     = instr_reg[11:7];
     assign funct3 = instr_reg[14:12];
-    assign funct7 = instr_reg[31:25];
-    assign rd     = instr_reg[10:7];
-    assign rs1    = instr_reg[18:15];
-    assign rs2    = instr_reg[23:20];
+    assign rs1    = instr_reg[19:15];
+    assign rs2    = instr_reg[24:20];
 
-    wire [31:0] rv1;
-    wire [31:0] rv2;
-
-    assign rv1 = (rs1 == 4'd0) ? 32'd0 : rf[rs1];
-    assign rv2 = (rs2 == 4'd0) ? 32'd0 : rf[rs2];
-
-    // Immediates
     wire [31:0] imm_i;
     wire [31:0] imm_s;
-    wire [31:0] imm_b;
     wire [31:0] imm_u;
-    wire [31:0] imm_j;
 
     assign imm_i = {{20{instr_reg[31]}}, instr_reg[31:20]};
     assign imm_s = {{20{instr_reg[31]}}, instr_reg[31:25], instr_reg[11:7]};
-    assign imm_b = {{19{instr_reg[31]}}, instr_reg[31], instr_reg[7],
-                    instr_reg[30:25], instr_reg[11:8], 1'b0};
     assign imm_u = {instr_reg[31:12], 12'd0};
-    assign imm_j = {{11{instr_reg[31]}}, instr_reg[31], instr_reg[19:12],
-                    instr_reg[20], instr_reg[30:21], 1'b0};
+
+    wire [31:0] rs1_val;
+    wire [31:0] rs2_val;
+
+    assign rs1_val =
+        (rs1 == 5'd1) ? x1 :
+        (rs1 == 5'd2) ? x2 :
+                         32'd0;
+
+    assign rs2_val =
+        (rs2 == 5'd1) ? x1 :
+        (rs2 == 5'd2) ? x2 :
+                         32'd0;
 
     wire is_ebreak;
-    assign is_ebreak = (instr_reg == 32'h00100073);
+    assign is_ebreak = (instr_reg == 32'h0010_0073);
 
     // ============================================================
-    // SRAM access mux
+    // SRAM address mux
     // ============================================================
 
     wire [5:0] pc_half_addr;
@@ -155,7 +166,7 @@ module tt_um_kluterirv_rv32e_core (
     wire [7:0] selected_boot_rbyte;
     assign selected_boot_rbyte = boot_byte_sel ? q1 : q0;
 
-    // Active-low SRAM controls
+    // GF180 SRAM control pins are active-low.
     wire cen;
     assign cen = 1'b0;
 
@@ -198,7 +209,7 @@ module tt_um_kluterirv_rv32e_core (
     );
 
     // ============================================================
-    // Core execution
+    // Minimal execution engine
     // ============================================================
 
     always @(posedge clk) begin
@@ -209,30 +220,29 @@ module tt_um_kluterirv_rv32e_core (
             instr_reg <= 32'd0;
             halted    <= 1'b0;
             out_reg   <= 8'd0;
-
-            for (i = 0; i < 16; i = i + 1) begin
-                rf[i] <= 32'd0;
-            end
+            x1        <= 32'd0;
+            x2        <= 32'd0;
         end else begin
-            // x0 is always zero
-            rf[0] <= 32'd0;
-
             if (!halted) begin
                 case (state)
+                    // Present low halfword address to SRAM.
                     S_ADDR_LO: begin
                         state <= S_CAP_LO;
                     end
 
+                    // Capture low halfword and present high halfword address.
                     S_CAP_LO: begin
                         instr_lo <= mem_rdata16;
                         state    <= S_CAP_HI;
                     end
 
+                    // Capture high halfword and build full instruction.
                     S_CAP_HI: begin
                         instr_reg <= {mem_rdata16, instr_lo};
                         state     <= S_EXEC;
                     end
 
+                    // Execute minimal instruction subset.
                     S_EXEC: begin
                         if (is_ebreak) begin
                             halted <= 1'b1;
@@ -241,125 +251,39 @@ module tt_um_kluterirv_rv32e_core (
                             case (opcode)
                                 // LUI
                                 7'b0110111: begin
-                                    if (rd != 4'd0) begin
-                                        rf[rd] <= imm_u;
+                                    if (rd == 5'd1) begin
+                                        x1 <= imm_u;
+                                    end else if (rd == 5'd2) begin
+                                        x2 <= imm_u;
                                     end
                                     pc <= pc + 32'd4;
                                 end
 
-                                // AUIPC
-                                7'b0010111: begin
-                                    if (rd != 4'd0) begin
-                                        rf[rd] <= pc + imm_u;
-                                    end
-                                    pc <= pc + 32'd4;
-                                end
-
-                                // JAL
-                                7'b1101111: begin
-                                    if (rd != 4'd0) begin
-                                        rf[rd] <= pc + 32'd4;
-                                    end
-                                    pc <= pc + imm_j;
-                                end
-
-                                // JALR
-                                7'b1100111: begin
-                                    if (rd != 4'd0) begin
-                                        rf[rd] <= pc + 32'd4;
-                                    end
-                                    pc <= (rv1 + imm_i) & 32'hFFFF_FFFE;
-                                end
-
-                                // BRANCH: BEQ/BNE/BLT/BGE/BLTU/BGEU
-                                7'b1100011: begin
-                                    case (funct3)
-                                        3'b000: pc <= (rv1 == rv2) ? pc + imm_b : pc + 32'd4;
-                                        3'b001: pc <= (rv1 != rv2) ? pc + imm_b : pc + 32'd4;
-                                        3'b100: pc <= ($signed(rv1) < $signed(rv2)) ? pc + imm_b : pc + 32'd4;
-                                        3'b101: pc <= ($signed(rv1) >= $signed(rv2)) ? pc + imm_b : pc + 32'd4;
-                                        3'b110: pc <= (rv1 < rv2) ? pc + imm_b : pc + 32'd4;
-                                        3'b111: pc <= (rv1 >= rv2) ? pc + imm_b : pc + 32'd4;
-                                        default: pc <= pc + 32'd4;
-                                    endcase
-                                end
-
-                                // OP-IMM
+                                // OP-IMM: only ADDI in phase 1
                                 7'b0010011: begin
-                                    if (rd != 4'd0) begin
-                                        case (funct3)
-                                            3'b000: rf[rd] <= rv1 + imm_i;                         // ADDI
-                                            3'b100: rf[rd] <= rv1 ^ imm_i;                         // XORI
-                                            3'b110: rf[rd] <= rv1 | imm_i;                         // ORI
-                                            3'b111: rf[rd] <= rv1 & imm_i;                         // ANDI
-                                            3'b001: rf[rd] <= rv1 << instr_reg[24:20];             // SLLI
-                                            3'b101: begin
-                                                if (instr_reg[30]) begin
-                                                    rf[rd] <= $signed(rv1) >>> instr_reg[24:20];   // SRAI
-                                                end else begin
-                                                    rf[rd] <= rv1 >> instr_reg[24:20];             // SRLI
-                                                end
-                                            end
-                                            default: rf[rd] <= 32'd0;
-                                        endcase
-                                    end
-                                    pc <= pc + 32'd4;
-                                end
-
-                                // OP
-                                7'b0110011: begin
-                                    if (rd != 4'd0) begin
-                                        case (funct3)
-                                            3'b000: begin
-                                                if (funct7[5]) begin
-                                                    rf[rd] <= rv1 - rv2;                           // SUB
-                                                end else begin
-                                                    rf[rd] <= rv1 + rv2;                           // ADD
-                                                end
-                                            end
-                                            3'b100: rf[rd] <= rv1 ^ rv2;                           // XOR
-                                            3'b110: rf[rd] <= rv1 | rv2;                           // OR
-                                            3'b111: rf[rd] <= rv1 & rv2;                           // AND
-                                            3'b001: rf[rd] <= rv1 << rv2[4:0];                     // SLL
-                                            3'b101: begin
-                                                if (funct7[5]) begin
-                                                    rf[rd] <= $signed(rv1) >>> rv2[4:0];           // SRA
-                                                end else begin
-                                                    rf[rd] <= rv1 >> rv2[4:0];                     // SRL
-                                                end
-                                            end
-                                            default: rf[rd] <= 32'd0;
-                                        endcase
-                                    end
-                                    pc <= pc + 32'd4;
-                                end
-
-                                // STORE
-                                // Minimal memory-mapped peripheral:
-                                //   0x1000_0000 -> out_reg[7:0]
-                                7'b0100011: begin
-                                    if ((rv1 + imm_s) == 32'h1000_0000) begin
-                                        out_reg <= rv2[7:0];
-                                    end
-                                    pc <= pc + 32'd4;
-                                end
-
-                                // LOAD
-                                // Minimal implementation:
-                                //   reads 0x1000_0000 as zero-extended out_reg.
-                                7'b0000011: begin
-                                    if (rd != 4'd0) begin
-                                        if ((rv1 + imm_i) == 32'h1000_0000) begin
-                                            rf[rd] <= {24'd0, out_reg};
-                                        end else begin
-                                            rf[rd] <= 32'd0;
+                                    if (funct3 == 3'b000) begin
+                                        if (rd == 5'd1) begin
+                                            x1 <= rs1_val + imm_i;
+                                        end else if (rd == 5'd2) begin
+                                            x2 <= rs1_val + imm_i;
                                         end
                                     end
                                     pc <= pc + 32'd4;
                                 end
 
+                                // STORE: only SW to memory-mapped GPIO
+                                // Address 0x1000_0000 -> out_reg[7:0]
+                                7'b0100011: begin
+                                    if (funct3 == 3'b010) begin
+                                        if ((rs1_val + imm_s) == 32'h1000_0000) begin
+                                            out_reg <= rs2_val[7:0];
+                                        end
+                                    end
+                                    pc <= pc + 32'd4;
+                                end
+
+                                // Unsupported instruction = NOP
                                 default: begin
-                                    // Unsupported instruction = NOP
                                     pc <= pc + 32'd4;
                                 end
                             endcase
