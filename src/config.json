@@ -54,6 +54,9 @@
     },
     "nl": [
       "dir::./macro_blackboxes/gf180mcu_fd_ip_sram__sram64x8m8wm1_blackbox.v"
+    ],
+    "spice": [
+      "dir::../third_party/gf180mcu_fd_ip_sram/cells/gf180mcu_fd_ip_sram__sram64x8m8wm1/gf180mcu_fd_ip_sram__sram64x8m8wm1.cdl"
     ]
   }
 },
@@ -67,6 +70,10 @@
   "//": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
   "//": "!!! DO NOT CHANGE ANYTHING BELOW THIS POINT !!!",
   "//": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+
+  "PRIMARY_GDSII_STREAMOUT_TOOL": "klayout",
+  "RUN_MAGIC_STREAMOUT": 0,
+  "RUN_KLAYOUT_STREAMOUT": 1,
 
   "//": "Save some time",
   "RUN_KLAYOUT_XOR": 0,
