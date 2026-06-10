@@ -36,8 +36,20 @@
 "MACROS": {
   "gf180mcu_fd_ip_sram__sram64x8m8wm1": {
     "instances": {
-      "u_sram": {
+      "u_mem_b0": {
         "location": [40, 40],
+        "orientation": "N"
+      },
+      "u_mem_b1": {
+        "location": [380, 40],
+        "orientation": "N"
+      },
+      "u_mem_b2": {
+        "location": [720, 40],
+        "orientation": "N"
+      },
+      "u_mem_b3": {
+        "location": [1060, 40],
         "orientation": "N"
       }
     },
@@ -62,7 +74,10 @@
 },
 
 "PDN_MACRO_CONNECTIONS": [
-  "u_sram VPWR VGND VDD VSS"
+  "u_mem_b0 VPWR VGND VDD VSS",
+  "u_mem_b1 VPWR VGND VDD VSS",
+  "u_mem_b2 VPWR VGND VDD VSS",
+  "u_mem_b3 VPWR VGND VDD VSS"
 ],
 
 "PDN_CFG": "dir::pdn_cfg.tcl",
