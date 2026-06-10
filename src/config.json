@@ -67,6 +67,8 @@
 
 "PDN_CFG": "dir::pdn_cfg.tcl",
 
+
+
   "//": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
   "//": "!!! DO NOT CHANGE ANYTHING BELOW THIS POINT !!!",
   "//": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
@@ -74,6 +76,12 @@
   "PRIMARY_GDSII_STREAMOUT_TOOL": "klayout",
   "RUN_MAGIC_STREAMOUT": 0,
   "RUN_KLAYOUT_STREAMOUT": 1,
+
+  "ERROR_ON_MAGIC_DRC": false,
+
+"MAGIC_EXT_ABSTRACT_CELLS": [
+  "gf180mcu_fd_ip_sram__.*"
+],
 
   "//": "Save some time",
   "RUN_KLAYOUT_XOR": 0,
