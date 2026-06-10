@@ -17,7 +17,7 @@
 
   "//": "CLOCK_PERIOD - Increase this in case you are getting setup time violations.",
   "//": "The value is in nanoseconds, so 20ns == 50MHz.",
-  "CLOCK_PERIOD": 20,
+  "CLOCK_PERIOD": 1000,
 
   "//": "Hold slack margin - Increase them in case you are getting hold violations.",
   "PL_RESIZER_HOLD_SLACK_MARGIN": 0.1,
@@ -33,7 +33,7 @@
 
   "//": "Configuration docs: https://librelane.readthedocs.io/en/latest/reference/configuration.html",
   
-    "MACROS": {
+  "MACROS": {
     "gf180mcu_fd_ip_sram__sram64x8m8wm1": {
       "gds": [
         "dir::../macros/gds/gf180mcu_fd_ip_sram__sram64x8m8wm1_flat.gds"
@@ -47,16 +47,15 @@
         ]
       },
       "instances": {
-          "u_sram": {
-            "location": [40, 40],
-            "orientation": "N"
-          }
+        "u_sram": {
+          "location": [40, 40],
+          "orientation": "N"
         }
       }
     }
   },
 
-    "PDN_MACRO_CONNECTIONS": [
+  "PDN_MACRO_CONNECTIONS": [
     "u_sram VDD VSS VDD VSS"
   ],
 
