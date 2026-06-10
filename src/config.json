@@ -47,16 +47,17 @@
         ]
       },
       "instances": {
-        "u_sram_test.u_sram": {
-          "location": [40, 40],
-          "orientation": "N"
+          "u_sram": {
+            "location": [40, 40],
+            "orientation": "N"
+          }
         }
       }
     }
   },
 
     "PDN_MACRO_CONNECTIONS": [
-    "u_sram_test.u_sram VDD VSS VDD VSS"
+    "u_sram VDD VSS VDD VSS"
   ],
 
   "//": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",

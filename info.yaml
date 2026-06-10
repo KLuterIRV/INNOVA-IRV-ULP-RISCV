@@ -18,7 +18,6 @@ project:
   # Don't forget to also update `PROJECT_SOURCES` in test/Makefile.
   source_files:
     - "tt_um_kluterirv_rv32e_core.v"
-    - "mem_macro_test/sram_macro_smoke_test.v"
     - "macro_blackboxes/gf180mcu_fd_ip_sram__sram64x8m8wm1_blackbox.v"
 
 # The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
