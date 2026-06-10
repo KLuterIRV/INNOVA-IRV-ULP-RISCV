@@ -42,7 +42,7 @@
       }
     },
     "gds": [
-      "dir::../third_party/gf180mcu_fd_ip_sram/cells/gf180mcu_fd_ip_sram__sram64x8m8wm1/gf180mcu_fd_ip_sram__sram64x8m8wm1.gds"
+      "dir::../macros/gds/gf180mcu_fd_ip_sram__sram64x8m8wm1_no58labels.gds"
     ],
     "lef": [
       "dir::../third_party/gf180mcu_fd_ip_sram/cells/gf180mcu_fd_ip_sram__sram64x8m8wm1/gf180mcu_fd_ip_sram__sram64x8m8wm1.lef"
