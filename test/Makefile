@@ -1,28 +1,43 @@
-TOPLEVEL_LANG = verilog
-SIM ?= verilator
+SIM ?= icarus
+FST ?= -fst
 
-TOPLEVEL = tt_um_kluterirv_rv32e_core
-MODULE = test_rv32e_sram
+TOPLEVEL_LANG ?= verilog
 
-PWD := $(shell pwd)
+SRC_DIR = $(PWD)/../src
 
-VERILOG_SOURCES = \
-	$(PWD)/../src/tt_um_kluterirv_rv32e_core.v \
-	$(PWD)/../src/macro_blackboxes/gf180mcu_fd_ip_sram__sram64x8m8wm1_blackbox.v
+PROJECT_SOURCES = \
+	tt_um_kluterirv_rv32e_core.v \
+	macro_blackboxes/gf180mcu_fd_ip_sram__sram64x8m8wm1_blackbox.v
 
-# Use EXTRA_ARGS instead of COMPILE_ARGS for better compatibility
-# with older cocotb/verilator Makefile flows.
-EXTRA_ARGS += -DSIM
-EXTRA_ARGS += -Wno-fatal
-EXTRA_ARGS += -Wno-UNOPTFLAT
-EXTRA_ARGS += -Wno-UNUSED
-EXTRA_ARGS += -Wno-WIDTH
-EXTRA_ARGS += -Wno-DECLFILENAME
+ifneq ($(GATES),yes)
 
-# Generate waveform artifact if the TT workflow uploads it.
-EXTRA_ARGS += --trace
+# RTL simulation
+SIM_BUILD = sim_build/rtl
+VERILOG_SOURCES += $(addprefix $(SRC_DIR)/,$(PROJECT_SOURCES))
+COMPILE_ARGS += -DSIM
 
-# Keep build output inside test/
-SIM_BUILD = sim_build
+else
+
+# Gate-level simulation
+SIM_BUILD = sim_build/gl
+COMPILE_ARGS += -DGL_TEST
+COMPILE_ARGS += -DFUNCTIONAL
+COMPILE_ARGS += -DSIM
+
+# Gate-level netlist is copied by the Tiny Tapeout workflow.
+VERILOG_SOURCES += $(PWD)/gate_level_netlist.v
+
+endif
+
+# Allow includes from src/
+COMPILE_ARGS += -I$(SRC_DIR)
+
+# Testbench wrapper
+VERILOG_SOURCES += $(PWD)/tb.v
+
+TOPLEVEL = tb
+
+# Python cocotb module: test/test.py
+COCOTB_TEST_MODULES = test
 
 include $(shell cocotb-config --makefiles)/Makefile.sim
