@@ -56,8 +56,10 @@
   },
 
   "PDN_MACRO_CONNECTIONS": [
-    "u_sram VDD VSS VPWR VGND"
+    "u_sram VPWR VGND VDD VSS"
   ],
+
+  "PDN_CONNECT_MACROS_TO_GRID": false,
 
   "//": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
   "//": "!!! DO NOT CHANGE ANYTHING BELOW THIS POINT !!!",
