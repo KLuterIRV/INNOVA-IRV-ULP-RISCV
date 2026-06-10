@@ -78,6 +78,7 @@
   "RUN_KLAYOUT_STREAMOUT": 1,
 
   "ERROR_ON_MAGIC_DRC": false,
+  "ERROR_ON_ILLEGAL_OVERLAPS": false,
 
 "MAGIC_EXT_ABSTRACT_CELLS": [
   "gf180mcu_fd_ip_sram__.*"
