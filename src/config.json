@@ -43,14 +43,6 @@
       "u_mem_b1": {
         "location": [380, 40],
         "orientation": "N"
-      },
-      "u_mem_b2": {
-        "location": [720, 40],
-        "orientation": "N"
-      },
-      "u_mem_b3": {
-        "location": [1060, 40],
-        "orientation": "N"
       }
     },
     "gds": [
@@ -75,9 +67,7 @@
 
 "PDN_MACRO_CONNECTIONS": [
   "u_mem_b0 VPWR VGND VDD VSS",
-  "u_mem_b1 VPWR VGND VDD VSS",
-  "u_mem_b2 VPWR VGND VDD VSS",
-  "u_mem_b3 VPWR VGND VDD VSS"
+  "u_mem_b1 VPWR VGND VDD VSS"
 ],
 
 "PDN_CFG": "dir::pdn_cfg.tcl",
