@@ -33,42 +33,40 @@
 
   "//": "Configuration docs: https://librelane.readthedocs.io/en/latest/reference/configuration.html",
   
-  "MACROS": {
-    "gf180mcu_fd_ip_sram__sram64x8m8wm1": {
-      "gds": [
-        "dir::../macros/gds/gf180mcu_fd_ip_sram__sram64x8m8wm1_flat.gds"
-      ],
-      "lef": [
-        "dir::../third_party/gf180mcu_fd_ip_sram/cells/gf180mcu_fd_ip_sram__sram64x8m8wm1/gf180mcu_fd_ip_sram__sram64x8m8wm1.lef"
-      ],
-      "lib": {
-        "*": [
-          "dir::../third_party/gf180mcu_fd_ip_sram/cells/gf180mcu_fd_ip_sram__sram64x8m8wm1/gf180mcu_fd_ip_sram__sram64x8m8wm1__tt_025C_5v00.lib"
-        ]
-      },
-      "instances": {
-        "u_sram": {
-          "location": [40, 40],
-          "orientation": "N"
-        }
+"MACROS": {
+  "gf180mcu_fd_ip_sram__sram64x8m8wm1": {
+    "instances": {
+      "u_sram": {
+        "location": [40, 40],
+        "orientation": "N"
       }
-    }
-  },
+    },
+    "gds": [
+      "dir::../third_party/gf180mcu_fd_ip_sram/cells/gf180mcu_fd_ip_sram__sram64x8m8wm1/gf180mcu_fd_ip_sram__sram64x8m8wm1.gds"
+    ],
+    "lef": [
+      "dir::../third_party/gf180mcu_fd_ip_sram/cells/gf180mcu_fd_ip_sram__sram64x8m8wm1/gf180mcu_fd_ip_sram__sram64x8m8wm1.lef"
+    ],
+    "lib": {
+      "*": [
+        "dir::../third_party/gf180mcu_fd_ip_sram/cells/gf180mcu_fd_ip_sram__sram64x8m8wm1/gf180mcu_fd_ip_sram__sram64x8m8wm1__tt_025C_5v00.lib"
+      ]
+    },
+    "nl": [
+      "dir::./macro_blackboxes/gf180mcu_fd_ip_sram__sram64x8m8wm1_blackbox.v"
+    ]
+  }
+},
 
-  "PDN_MACRO_CONNECTIONS": [
-    "u_sram VPWR VGND VDD VSS"
-  ],
+"PDN_MACRO_CONNECTIONS": [
+  "u_sram VPWR VGND VDD VSS"
+],
 
-  "PDN_CONNECT_MACROS_TO_GRID": false,
+"PDN_CFG": "dir::pdn_cfg.tcl",
 
   "//": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
   "//": "!!! DO NOT CHANGE ANYTHING BELOW THIS POINT !!!",
   "//": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
-
-    "//": "Use KLayout streamout as primary GDS output for SRAM macro integration",
-  "PRIMARY_GDSII_STREAMOUT_TOOL": "klayout",
-  "RUN_MAGIC_STREAMOUT": 0,
-  "RUN_KLAYOUT_STREAMOUT": 1,
 
   "//": "Save some time",
   "RUN_KLAYOUT_XOR": 0,
