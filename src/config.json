@@ -13,11 +13,13 @@
 
   "//": "PL_TARGET_DENSITY_PCT - You can increase this if Global Placement fails with error GPL-0302.",
   "//": "Users have reported that values up to 80 worked well for them.",
-  "PL_TARGET_DENSITY_PCT": 60,
+  "PL_TARGET_DENSITY_PCT": 30,
 
   "//": "CLOCK_PERIOD - Increase this in case you are getting setup time violations.",
   "//": "The value is in nanoseconds, so 20ns == 50MHz.",
   "CLOCK_PERIOD": 1000,
+  "GPL_CELL_PADDING": 2,
+  "DPL_CELL_PADDING": 2,
 
   "//": "Hold slack margin - Increase them in case you are getting hold violations.",
   "PL_RESIZER_HOLD_SLACK_MARGIN": 0.1,
@@ -37,11 +39,11 @@
   "gf180mcu_fd_ip_sram__sram64x8m8wm1": {
     "instances": {
       "u_mem_b0": {
-        "location": [40, 40],
+        "location": [80, 40],
         "orientation": "N"
       },
       "u_mem_b1": {
-        "location": [380, 40],
+        "location": [880, 40],
         "orientation": "N"
       }
     },
