@@ -1,5 +1,21 @@
 `default_nettype none
 
+`ifdef GL_TEST
+
+module gf180mcu_fd_ip_sram__sram64x8m8wm1 (
+    input  wire       CLK,
+    input  wire       CEN,
+    input  wire       GWEN,
+    input  wire [7:0] WEN,
+    input  wire [5:0] A,
+    input  wire [7:0] D,
+    output wire [7:0] Q,
+    input  wire       VDD,
+    input  wire       VSS
+);
+
+`else
+
 module gf180mcu_fd_ip_sram__sram64x8m8wm1 (
     input  wire       CLK,
     input  wire       CEN,
@@ -9,6 +25,8 @@ module gf180mcu_fd_ip_sram__sram64x8m8wm1 (
     input  wire [7:0] D,
     output wire [7:0] Q
 );
+
+`endif
 
 `ifdef SIM
 
@@ -46,13 +64,8 @@ module gf180mcu_fd_ip_sram__sram64x8m8wm1 (
 `else
 
     // Physical macro blackbox.
-    // The real implementation is provided by:
-    //   - LEF for floorplanning/routing
-    //   - GDS for streamout
-    //   - LIB for timing
-    //   - CDL for LVS/signoff
-    //
-    // No behavioral logic here during synthesis.
+    // Real implementation is provided by LEF/GDS/LIB/CDL.
+    // No behavioral logic here during synthesis/hardening.
 
 `endif
 
