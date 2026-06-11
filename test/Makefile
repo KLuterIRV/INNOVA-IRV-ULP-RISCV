@@ -29,8 +29,9 @@ COMPILE_ARGS += -DSIM
 # Gate-level netlist copied by the Tiny Tapeout workflow.
 VERILOG_SOURCES += $(PWD)/gate_level_netlist.v
 
-# GF180 standard-cell behavioral models with power pins.
-VERILOG_SOURCES += $(PWD)/models/gf180/gf180mcu_fd_sc_mcu7t5v0_behavioral_pp.v
+# GF180 standard-cell models for GL simulation:
+# powered wrappers + generated *_func helpers.
+VERILOG_SOURCES += $(PWD)/models/gf180/gf180mcu_fd_sc_mcu7t5v0_gl.v
 
 # SRAM macro behavioral model.
 VERILOG_SOURCES += $(SRC_DIR)/macro_blackboxes/gf180mcu_fd_ip_sram__sram64x8m8wm1_blackbox.v
