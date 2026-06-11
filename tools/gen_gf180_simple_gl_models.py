@@ -20,10 +20,6 @@ OUTPUT_NAMES = {
     "Z", "ZN", "Q", "QN", "Y", "S", "CO", "SUM", "COUT"
 }
 
-POWER_NAMES = {
-    "VDD", "VSS", "VPWR", "VGND"
-}
-
 
 def clean_ports(port_blob):
     port_blob = port_blob.replace("\n", " ")
@@ -32,9 +28,22 @@ def clean_ports(port_blob):
         p = p.strip()
         if not p:
             continue
-        # Remove possible comments / whitespace.
         p = re.sub(r"/\*.*?\*/", "", p).strip()
         ports.append(p)
+    return ports
+
+
+def add_well_ports_if_needed(ports):
+    # Match OpenLane/Tiny Tapeout powered netlists.
+    # PDK .behavioral.pp.v often exposes only VDD/VSS,
+    # but the generated netlist may connect VNW/VPW too.
+    if "VDD" in ports and "VSS" in ports:
+        insert_at = ports.index("VSS")
+        if "VNW" not in ports:
+            ports.insert(insert_at, "VNW")
+            insert_at += 1
+        if "VPW" not in ports:
+            ports.insert(insert_at, "VPW")
     return ports
 
 
@@ -50,15 +59,6 @@ def p(ports, name):
     return name in ports
 
 
-def sorted_prefixed(ports, prefix):
-    vals = []
-    for port in ports:
-        m = re.fullmatch(prefix + r"(\d+)", port)
-        if m:
-            vals.append((int(m.group(1)), port))
-    return [x[1] for x in sorted(vals)]
-
-
 def emit_module(out, name, ports):
     base = cell_base(name)
 
@@ -70,7 +70,6 @@ def emit_module(out, name, ports):
     if in_ports:
         out.write("  input " + ", ".join(in_ports) + ";\n")
 
-    # DFF outputs need reg.
     if base.startswith("dff") or base in {"latq", "latrnq"}:
         if out_ports:
             out.write("  output reg " + ", ".join(out_ports) + ";\n")
@@ -91,19 +90,25 @@ def emit_module(out, name, ports):
     if base in {"tiel", "tie0"}:
         if p(ports, "Z"):
             out.write("  assign Z = 1'b0;\n")
+        elif p(ports, "ZN"):
+            out.write("  assign ZN = 1'b1;\n")
         out.write("endmodule\n\n")
         return
 
     if base in {"tieh", "tie1"}:
         if p(ports, "Z"):
             out.write("  assign Z = 1'b1;\n")
+        elif p(ports, "ZN"):
+            out.write("  assign ZN = 1'b0;\n")
         out.write("endmodule\n\n")
         return
 
-    # Buffers / inverters.
+    # Buffers / inverters / delay buffers.
     if base in {"buf", "clkbuf", "dlyb"}:
         if p(ports, "I") and p(ports, "Z"):
             out.write("  assign Z = I;\n")
+        elif p(ports, "I") and p(ports, "ZN"):
+            out.write("  assign ZN = ~I;\n")
         out.write("endmodule\n\n")
         return
 
@@ -115,7 +120,7 @@ def emit_module(out, name, ports):
         out.write("endmodule\n\n")
         return
 
-    # DFF variants used by OpenLane.
+    # DFF.
     if base == "dffq":
         if p(ports, "CLK") and p(ports, "D") and p(ports, "Q"):
             out.write("  always @(posedge CLK) begin\n")
@@ -124,7 +129,7 @@ def emit_module(out, name, ports):
         out.write("endmodule\n\n")
         return
 
-    # Generic AND/OR/NAND/NOR/XOR/XNOR.
+    # Generic gates. GF180 often uses Z for output.
     for prefix, op in [
         ("and", "&"),
         ("or", "|"),
@@ -142,6 +147,11 @@ def emit_module(out, name, ports):
                 if prefix in {"nand", "nor", "xnor"}:
                     expr = f"~({expr})"
                 out.write(f"  assign Z = {expr};\n")
+            elif p(ports, "ZN") and ins:
+                expr = f" {op} ".join(ins)
+                if prefix in {"and", "or", "xor"}:
+                    expr = f"~({expr})"
+                out.write(f"  assign ZN = {expr};\n")
             out.write("endmodule\n\n")
             return
 
@@ -206,8 +216,7 @@ def emit_module(out, name, ports):
         out.write("endmodule\n\n")
         return
 
-    # Fallback for unused/rare cells.
-    # Keep compilation alive. If such a cell is critical, the waveform/test will catch it.
+    # Fallback.
     for o in out_ports:
         if o == "Z":
             out.write("  assign Z = 1'b0;\n")
@@ -234,6 +243,7 @@ def main():
 
         name = m.group(1)
         ports = clean_ports(m.group(2))
+        ports = add_well_ports_if_needed(ports)
         modules[name] = ports
 
     if not modules:
@@ -243,7 +253,7 @@ def main():
 
     with OUT.open("w", encoding="utf-8") as out:
         out.write("// Simple GF180 MCU7T5V0 functional models for Icarus GL simulation\n")
-        out.write("// Generated for cocotb gate-level test only.\n")
+        out.write("// Generated from PDK cell declarations, with VNW/VPW added for powered netlists.\n")
         out.write("// Do not use for synthesis, timing signoff, LVS, or physical implementation.\n\n")
         out.write("`timescale 1ns / 1ps\n\n")
 

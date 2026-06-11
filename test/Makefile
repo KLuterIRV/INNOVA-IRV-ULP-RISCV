@@ -15,7 +15,7 @@ ifneq ($(GATES),yes)
 
 # RTL simulation
 SIM_BUILD = sim_build/rtl
-VERILOG_SOURCES += $(addprefix $(SRC_DIR)/,$(PROJECT_SOURCES))
+VERILOG_SOURCES += $(PWD)/models/gf180/gf180mcu_fd_sc_mcu7t5v0_simple_gl.v
 COMPILE_ARGS += -DSIM
 
 else
