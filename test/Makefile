@@ -27,6 +27,10 @@ COMPILE_ARGS += -DSIM
 # Gate-level netlist is copied by the Tiny Tapeout workflow.
 VERILOG_SOURCES += $(PWD)/gate_level_netlist.v
 
+# The SRAM macro is still a macro instance in the gate-level netlist.
+# Include the SIM behavioral model so GL test can run.
+VERILOG_SOURCES += $(SRC_DIR)/macro_blackboxes/gf180mcu_fd_ip_sram__sram64x8m8wm1_blackbox.v
+
 endif
 
 # Allow includes from src/
