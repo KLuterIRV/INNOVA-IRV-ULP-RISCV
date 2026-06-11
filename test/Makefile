@@ -1,3 +1,5 @@
+# Tiny Tapeout / GF180 cocotb test Makefile
+
 SIM ?= icarus
 FST ?= -fst
 
@@ -27,23 +29,11 @@ COMPILE_ARGS += -DSIM
 # Gate-level netlist copied by the Tiny Tapeout workflow.
 VERILOG_SOURCES += $(PWD)/gate_level_netlist.v
 
+# GF180 standard-cell behavioral models with power pins.
+VERILOG_SOURCES += $(PWD)/models/gf180/gf180mcu_fd_sc_mcu7t5v0_behavioral_pp.v
+
 # SRAM macro behavioral model.
 VERILOG_SOURCES += $(SRC_DIR)/macro_blackboxes/gf180mcu_fd_ip_sram__sram64x8m8wm1_blackbox.v
-
-# GF180 standard-cell functional models.
-# In Tiny Tapeout / LibreLane CI, PDK_ROOT and PDK should be provided.
-GF180_STDCELL_VERILOG := $(shell \
-	if [ -n "$$PDK_ROOT" ] && [ -n "$$PDK" ]; then \
-		find "$$PDK_ROOT/$$PDK" -path "*gf180mcu_fd_sc_mcu7t5v0*verilog*" -name "*.v" 2>/dev/null | head -n 1; \
-	fi \
-)
-
-ifeq ($(GF180_STDCELL_VERILOG),)
-$(warning GF180 stdcell Verilog model not found via PDK_ROOT/PDK)
-else
-$(info Using GF180 stdcell Verilog: $(GF180_STDCELL_VERILOG))
-VERILOG_SOURCES += $(GF180_STDCELL_VERILOG)
-endif
 
 endif
 
