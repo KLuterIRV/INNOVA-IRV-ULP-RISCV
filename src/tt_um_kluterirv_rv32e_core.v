@@ -11,98 +11,63 @@ module tt_um_kluterirv_rv32e_core (
     input  wire       rst_n
 );
 
-    // ============================================================
-    // Phase 1 minimal RV32E demo core + unified 64x16 SRAM
-    // ============================================================
-    //
-    // Physical SRAM:
-    //   u_mem_b0: low byte  [7:0]
-    //   u_mem_b1: high byte [15:8]
-    //
-    // Logical SRAM:
-    //   64 x 16-bit halfwords = 128 bytes
-    //
-    // Instruction memory capacity:
-    //   32 RV32 instructions maximum.
-    //
-    // Supported instructions for phase 1:
-    //   ADDI
-    //   LUI
-    //   SW to memory-mapped GPIO at 0x1000_0000
-    //   EBREAK
-    //
-    // Test program:
-    //   addi x1, x0, 0x55
-    //   lui  x2, 0x10000
-    //   sw   x1, 0(x2)
-    //   ebreak
-    //
-    // Expected:
-    //   uo_out = 0x55
-    //
-    // Boot/programming mode:
-    //   Hold rst_n = 0.
-    //   ui_in[0]   = write enable
-    //   ui_in[7:1] = byte address 0..127
-    //   uio_in     = byte write data
-    //
-    // Run mode:
-    //   Release rst_n = 1.
-    //   Core starts at PC = 0.
+    // ---------------------------------------------------------------------
+    // Reset / boot mode
+    // ---------------------------------------------------------------------
 
     wire rst;
     assign rst = ~rst_n;
 
-    // ============================================================
-    // Boot/programming interface
-    // ============================================================
+    wire boot_mode;
+    assign boot_mode = rst;
 
-    wire        boot_mode;
+    // Boot/programming interface while rst_n = 0:
+    //   ui_in[0]   = write enable
+    //   ui_in[7:1] = byte address 0..127
+    //   uio_in     = byte data
     wire        boot_we;
     wire [6:0]  boot_byte_addr;
     wire [5:0]  boot_half_addr;
     wire        boot_byte_sel;
-    wire [7:0]  boot_wbyte;
 
-    assign boot_mode      = rst;
     assign boot_we        = ui_in[0];
     assign boot_byte_addr = ui_in[7:1];
     assign boot_half_addr = boot_byte_addr[6:1];
     assign boot_byte_sel  = boot_byte_addr[0];
-    assign boot_wbyte     = uio_in;
 
-    // ============================================================
-    // Minimal core state
-    // ============================================================
+    // ---------------------------------------------------------------------
+    // CPU state
+    // ---------------------------------------------------------------------
 
-    localparam [1:0] S_ADDR_LO = 2'd0;
-    localparam [1:0] S_CAP_LO  = 2'd1;
-    localparam [1:0] S_CAP_HI  = 2'd2;
-    localparam [1:0] S_EXEC    = 2'd3;
+    localparam [2:0]
+        S_ADDR_LO = 3'd0,
+        S_CAP_LO  = 3'd1,
+        S_CAP_HI  = 3'd2,
+        S_EXEC    = 3'd3,
+        S_HALT    = 3'd4;
 
-    reg [1:0]  state;
+    reg [2:0] state;
+
     reg [31:0] pc;
     reg [15:0] instr_lo;
     reg [31:0] instr_reg;
-    reg        halted;
-    reg [7:0]  out_reg;
 
-    // Phase-1 minimal register file:
-    // Only x1 and x2 are physically implemented.
-    // x0 is hardwired to zero.
-    //
-    // This avoids the large 16x32 DFF register file that made
-    // the previous core too large for 4x2 with 2 SRAM macros.
+    reg [7:0] out_reg;
+    reg       halted;
+
+    // Minimal physical registers for phase 2.
     reg [31:0] x1;
     reg [31:0] x2;
+    reg [31:0] x3;
+    reg [31:0] x4;
 
-    // ============================================================
-    // Instruction decode
-    // ============================================================
+    // ---------------------------------------------------------------------
+    // Decode helpers
+    // ---------------------------------------------------------------------
 
     wire [6:0] opcode;
-    wire [2:0] funct3;
     wire [4:0] rd;
+    wire [2:0] funct3;
     wire [4:0] rs1;
     wire [4:0] rs2;
 
@@ -118,27 +83,46 @@ module tt_um_kluterirv_rv32e_core (
 
     assign imm_i = {{20{instr_reg[31]}}, instr_reg[31:20]};
     assign imm_s = {{20{instr_reg[31]}}, instr_reg[31:25], instr_reg[11:7]};
-    assign imm_u = {instr_reg[31:12], 12'd0};
+    assign imm_u = {instr_reg[31:12], 12'b0};
+
+    function [31:0] read_reg;
+        input [4:0] r;
+        begin
+            case (r)
+                5'd0: read_reg = 32'd0;
+                5'd1: read_reg = x1;
+                5'd2: read_reg = x2;
+                5'd3: read_reg = x3;
+                5'd4: read_reg = x4;
+                default: read_reg = 32'd0;
+            endcase
+        end
+    endfunction
 
     wire [31:0] rs1_val;
     wire [31:0] rs2_val;
 
-    assign rs1_val =
-        (rs1 == 5'd1) ? x1 :
-        (rs1 == 5'd2) ? x2 :
-                         32'd0;
+    assign rs1_val = read_reg(rs1);
+    assign rs2_val = read_reg(rs2);
 
-    assign rs2_val =
-        (rs2 == 5'd1) ? x1 :
-        (rs2 == 5'd2) ? x2 :
-                         32'd0;
-
-    wire is_ebreak;
-    assign is_ebreak = (instr_reg == 32'h0010_0073);
-
-    // ============================================================
-    // SRAM address mux
-    // ============================================================
+    // ---------------------------------------------------------------------
+    // Unified 64x16 SRAM memory
+    // ---------------------------------------------------------------------
+    //
+    // Two 64x8 GF180 SRAM macros form one 64x16 memory:
+    //
+    //   u_mem_b0 -> bits [7:0]
+    //   u_mem_b1 -> bits [15:8]
+    //
+    // Program capacity:
+    //   64 halfwords = 128 bytes = 32 RV32 instructions.
+    //
+    // Fetch:
+    //   instruction low  halfword at PC[6:1]
+    //   instruction high halfword at PC[6:1] + 1
+    //
+    // Boot:
+    //   byte address selects halfword and low/high byte.
 
     wire [5:0] pc_half_addr;
     wire [5:0] pc_half_addr_hi;
@@ -146,47 +130,40 @@ module tt_um_kluterirv_rv32e_core (
     assign pc_half_addr    = pc[6:1];
     assign pc_half_addr_hi = pc[6:1] + 6'd1;
 
-    wire [5:0] core_mem_addr;
+    reg [5:0] run_sram_addr;
 
-    assign core_mem_addr =
-        (state == S_ADDR_LO) ? pc_half_addr :
-        (state == S_CAP_LO)  ? pc_half_addr_hi :
-        (state == S_CAP_HI)  ? pc_half_addr_hi :
-                               pc_half_addr;
+    always @(*) begin
+        case (state)
+            S_ADDR_LO: run_sram_addr = pc_half_addr;
+            S_CAP_LO:  run_sram_addr = pc_half_addr_hi;
+            default:   run_sram_addr = pc_half_addr;
+        endcase
+    end
 
     wire [5:0] sram_addr;
-    assign sram_addr = boot_mode ? boot_half_addr : core_mem_addr;
+    assign sram_addr = boot_mode ? boot_half_addr : run_sram_addr;
 
-    wire [7:0] q0;
-    wire [7:0] q1;
+    wire        cen;
+    wire        we_b0;
+    wire        we_b1;
+    wire        gwen_b0;
+    wire        gwen_b1;
+    wire [7:0]  wen_b0;
+    wire [7:0]  wen_b1;
 
-    wire [15:0] mem_rdata16;
-    assign mem_rdata16 = {q1, q0};
-
-    wire [7:0] selected_boot_rbyte;
-    assign selected_boot_rbyte = boot_byte_sel ? q1 : q0;
-
-    // GF180 SRAM control pins are active-low.
-    wire cen;
     assign cen = 1'b0;
-
-    wire we_b0;
-    wire we_b1;
 
     assign we_b0 = boot_mode && boot_we && (boot_byte_sel == 1'b0);
     assign we_b1 = boot_mode && boot_we && (boot_byte_sel == 1'b1);
 
-    wire gwen_b0;
-    wire gwen_b1;
-
     assign gwen_b0 = ~we_b0;
     assign gwen_b1 = ~we_b1;
 
-    wire [7:0] wen_b0;
-    wire [7:0] wen_b1;
-
     assign wen_b0 = we_b0 ? 8'h00 : 8'hFF;
     assign wen_b1 = we_b1 ? 8'h00 : 8'hFF;
+
+    wire [7:0] q0;
+    wire [7:0] q1;
 
     gf180mcu_fd_ip_sram__sram64x8m8wm1 u_mem_b0 (
         .CLK  (clk),
@@ -194,7 +171,7 @@ module tt_um_kluterirv_rv32e_core (
         .GWEN (gwen_b0),
         .WEN  (wen_b0),
         .A    (sram_addr),
-        .D    (boot_wbyte),
+        .D    (uio_in),
         .Q    (q0)
     );
 
@@ -204,121 +181,125 @@ module tt_um_kluterirv_rv32e_core (
         .GWEN (gwen_b1),
         .WEN  (wen_b1),
         .A    (sram_addr),
-        .D    (boot_wbyte),
+        .D    (uio_in),
         .Q    (q1)
     );
 
-    // ============================================================
-    // Minimal execution engine
-    // ============================================================
+    wire [15:0] sram_rhalf;
+    assign sram_rhalf = {q1, q0};
+
+    // ---------------------------------------------------------------------
+    // CPU FSM
+    // ---------------------------------------------------------------------
 
     always @(posedge clk) begin
-        if (rst || !ena) begin
-            pc        <= 32'd0;
+        if (rst) begin
             state     <= S_ADDR_LO;
+            pc        <= 32'd0;
             instr_lo  <= 16'd0;
             instr_reg <= 32'd0;
-            halted    <= 1'b0;
             out_reg   <= 8'd0;
+            halted    <= 1'b0;
             x1        <= 32'd0;
             x2        <= 32'd0;
+            x3        <= 32'd0;
+            x4        <= 32'd0;
         end else begin
-            if (!halted) begin
-                case (state)
-                    // Present low halfword address to SRAM.
-                    S_ADDR_LO: begin
+            case (state)
+
+                S_ADDR_LO: begin
+                    if (halted) begin
+                        state <= S_HALT;
+                    end else begin
                         state <= S_CAP_LO;
                     end
+                end
 
-                    // Capture low halfword and present high halfword address.
-                    S_CAP_LO: begin
-                        instr_lo <= mem_rdata16;
-                        state    <= S_CAP_HI;
-                    end
+                S_CAP_LO: begin
+                    instr_lo <= sram_rhalf;
+                    state    <= S_CAP_HI;
+                end
 
-                    // Capture high halfword and build full instruction.
-                    S_CAP_HI: begin
-                        instr_reg <= {mem_rdata16, instr_lo};
-                        state     <= S_EXEC;
-                    end
+                S_CAP_HI: begin
+                    instr_reg <= {sram_rhalf, instr_lo};
+                    state     <= S_EXEC;
+                end
 
-                    // Execute minimal instruction subset.
-                    S_EXEC: begin
-                        if (is_ebreak) begin
-                            halted <= 1'b1;
-                            pc     <= pc;
-                        end else begin
-                            case (opcode)
-                                // LUI
-                                7'b0110111: begin
-                                    if (rd == 5'd1) begin
-                                        x1 <= imm_u;
-                                    end else if (rd == 5'd2) begin
-                                        x2 <= imm_u;
+                S_EXEC: begin
+                    if (instr_reg == 32'h0010_0073) begin
+                        halted <= 1'b1;
+                        state  <= S_HALT;
+                    end else begin
+                        pc <= pc + 32'd4;
+
+                        case (opcode)
+
+                            // LUI
+                            7'b0110111: begin
+                                case (rd)
+                                    5'd1: x1 <= imm_u;
+                                    5'd2: x2 <= imm_u;
+                                    5'd3: x3 <= imm_u;
+                                    5'd4: x4 <= imm_u;
+                                    default: begin end
+                                endcase
+                            end
+
+                            // OP-IMM: ADDI only
+                            7'b0010011: begin
+                                if (funct3 == 3'b000) begin
+                                    case (rd)
+                                        5'd1: x1 <= rs1_val + imm_i;
+                                        5'd2: x2 <= rs1_val + imm_i;
+                                        5'd3: x3 <= rs1_val + imm_i;
+                                        5'd4: x4 <= rs1_val + imm_i;
+                                        default: begin end
+                                    endcase
+                                end
+                            end
+
+                            // STORE: SW to memory-mapped GPIO only
+                            7'b0100011: begin
+                                if (funct3 == 3'b010) begin
+                                    if ((rs1_val + imm_s) == 32'h1000_0000) begin
+                                        out_reg <= rs2_val[7:0];
                                     end
-                                    pc <= pc + 32'd4;
                                 end
+                            end
 
-                                // OP-IMM: only ADDI in phase 1
-                                7'b0010011: begin
-                                    if (funct3 == 3'b000) begin
-                                        if (rd == 5'd1) begin
-                                            x1 <= rs1_val + imm_i;
-                                        end else if (rd == 5'd2) begin
-                                            x2 <= rs1_val + imm_i;
-                                        end
-                                    end
-                                    pc <= pc + 32'd4;
-                                end
+                            default: begin
+                                // Unsupported instruction = NOP.
+                            end
 
-                                // STORE: only SW to memory-mapped GPIO
-                                // Address 0x1000_0000 -> out_reg[7:0]
-                                7'b0100011: begin
-                                    if (funct3 == 3'b010) begin
-                                        if ((rs1_val + imm_s) == 32'h1000_0000) begin
-                                            out_reg <= rs2_val[7:0];
-                                        end
-                                    end
-                                    pc <= pc + 32'd4;
-                                end
-
-                                // Unsupported instruction = NOP
-                                default: begin
-                                    pc <= pc + 32'd4;
-                                end
-                            endcase
-                        end
+                        endcase
 
                         state <= S_ADDR_LO;
                     end
+                end
 
-                    default: begin
-                        state <= S_ADDR_LO;
-                    end
-                endcase
-            end
+                S_HALT: begin
+                    state <= S_HALT;
+                end
+
+                default: begin
+                    state <= S_ADDR_LO;
+                end
+
+            endcase
         end
     end
 
-    // ============================================================
-    // TinyTapeout outputs
-    // ============================================================
+    // ---------------------------------------------------------------------
+    // Tiny Tapeout outputs
+    // ---------------------------------------------------------------------
 
-    assign uo_out = boot_mode ? selected_boot_rbyte : out_reg;
+    wire [7:0] boot_debug_byte;
+    assign boot_debug_byte = boot_byte_sel ? q1 : q0;
+
+    assign uo_out = ena ? (boot_mode ? boot_debug_byte : out_reg) : 8'd0;
 
     assign uio_out = 8'd0;
     assign uio_oe  = 8'd0;
-
-    wire _unused;
-    assign _unused = &{
-        ui_in,
-        uio_in,
-        instr_reg,
-        pc,
-        state,
-        halted,
-        1'b0
-    };
 
 endmodule
 
