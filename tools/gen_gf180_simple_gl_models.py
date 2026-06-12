@@ -115,7 +115,31 @@ def first_existing(items, names):
 
 
 def gate_inputs(ports, dirs, n):
-    return [f"A{i}" for i in range(1, n + 1) if dirs.get(f"A{i}") == "input"]
+    # Support both GF180 naming styles:
+    #   A1, A2, A3...
+    #   A, B, C...
+    numbered = [f"A{i}" for i in range(1, n + 1) if dirs.get(f"A{i}") == "input"]
+    if len(numbered) == n:
+        return numbered
+
+    letters_order = ["A", "B", "C", "D", "E", "F"]
+    letters = [x for x in letters_order[:n] if dirs.get(x) == "input"]
+    if len(letters) == n:
+        return letters
+
+    # Last-resort fallback: use non-power input pins, excluding control pins.
+    excluded = {
+        "VDD", "VSS", "VNW", "VPW",
+        "CLK", "CLKN", "D", "RN", "SETN", "SE", "SI",
+        "S", "S0", "S1", "I", "I0", "I1", "I2", "I3"
+    }
+
+    generic = [
+        x for x in ports
+        if dirs.get(x) == "input" and x not in excluded
+    ]
+
+    return generic[:n]
 
 
 def write_assign(out, target, expr):
