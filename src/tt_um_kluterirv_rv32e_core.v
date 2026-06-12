@@ -55,7 +55,7 @@ module tt_um_kluterirv_rv32e_core (
     reg [7:0] out_reg;
     reg       halted;
 
-    // Minimal physical registers for phase 2.
+    // Minimal physical registers.
     reg [31:0] x1;
     reg [31:0] x2;
     reg [31:0] x3;
@@ -80,10 +80,22 @@ module tt_um_kluterirv_rv32e_core (
     wire [31:0] imm_i;
     wire [31:0] imm_s;
     wire [31:0] imm_u;
+    wire [31:0] imm_b;
 
     assign imm_i = {{20{instr_reg[31]}}, instr_reg[31:20]};
     assign imm_s = {{20{instr_reg[31]}}, instr_reg[31:25], instr_reg[11:7]};
     assign imm_u = {instr_reg[31:12], 12'b0};
+
+    // B-type immediate:
+    // imm[12|10:5|4:1|11|0] = instr[31|30:25|11:8|7|0]
+    assign imm_b = {
+        {19{instr_reg[31]}},
+        instr_reg[31],
+        instr_reg[7],
+        instr_reg[30:25],
+        instr_reg[11:8],
+        1'b0
+    };
 
     function [31:0] read_reg;
         input [4:0] r;
@@ -105,24 +117,21 @@ module tt_um_kluterirv_rv32e_core (
     assign rs1_val = read_reg(rs1);
     assign rs2_val = read_reg(rs2);
 
+    wire branch_eq;
+    wire branch_taken;
+
+    assign branch_eq = (rs1_val == rs2_val);
+
+    assign branch_taken =
+        (opcode == 7'b1100011) &&
+        (
+            ((funct3 == 3'b000) && branch_eq)  || // BEQ
+            ((funct3 == 3'b001) && !branch_eq)    // BNE
+        );
+
     // ---------------------------------------------------------------------
     // Unified 64x16 SRAM memory
     // ---------------------------------------------------------------------
-    //
-    // Two 64x8 GF180 SRAM macros form one 64x16 memory:
-    //
-    //   u_mem_b0 -> bits [7:0]
-    //   u_mem_b1 -> bits [15:8]
-    //
-    // Program capacity:
-    //   64 halfwords = 128 bytes = 32 RV32 instructions.
-    //
-    // Fetch:
-    //   instruction low  halfword at PC[6:1]
-    //   instruction high halfword at PC[6:1] + 1
-    //
-    // Boot:
-    //   byte address selects halfword and low/high byte.
 
     wire [5:0] pc_half_addr;
     wire [5:0] pc_half_addr_hi;
@@ -230,12 +239,13 @@ module tt_um_kluterirv_rv32e_core (
                         halted <= 1'b1;
                         state  <= S_HALT;
                     end else begin
-                        pc <= pc + 32'd4;
 
                         case (opcode)
 
                             // LUI
                             7'b0110111: begin
+                                pc <= pc + 32'd4;
+
                                 case (rd)
                                     5'd1: x1 <= imm_u;
                                     5'd2: x2 <= imm_u;
@@ -247,6 +257,8 @@ module tt_um_kluterirv_rv32e_core (
 
                             // OP-IMM: ADDI only
                             7'b0010011: begin
+                                pc <= pc + 32'd4;
+
                                 if (funct3 == 3'b000) begin
                                     case (rd)
                                         5'd1: x1 <= rs1_val + imm_i;
@@ -260,6 +272,8 @@ module tt_um_kluterirv_rv32e_core (
 
                             // STORE: SW to memory-mapped GPIO only
                             7'b0100011: begin
+                                pc <= pc + 32'd4;
+
                                 if (funct3 == 3'b010) begin
                                     if ((rs1_val + imm_s) == 32'h1000_0000) begin
                                         out_reg <= rs2_val[7:0];
@@ -267,8 +281,18 @@ module tt_um_kluterirv_rv32e_core (
                                 end
                             end
 
+                            // BRANCH: BEQ / BNE
+                            7'b1100011: begin
+                                if (branch_taken) begin
+                                    pc <= pc + imm_b;
+                                end else begin
+                                    pc <= pc + 32'd4;
+                                end
+                            end
+
                             default: begin
                                 // Unsupported instruction = NOP.
+                                pc <= pc + 32'd4;
                             end
 
                         endcase

@@ -52,12 +52,21 @@ async def test_project(dut):
     #
     # Little-endian byte order.
     program = [
-        # addi x1, x0, 0x11
-        0x93, 0x00, 0x10, 0x01,
+        # addi x1, x0, 3
+        0x93, 0x00, 0x30, 0x00,
 
-        # addi x3, x0, 0x33
-        0x93, 0x01, 0x30, 0x03,
+        # addi x3, x0, 3
+        0x93, 0x01, 0x30, 0x00,
 
+        # beq x1, x3, label
+        # offset = +8 bytes, skips next instruction
+        0x63, 0x84, 0x30, 0x00,
+
+        # addi x4, x0, 0xff
+        # This instruction must be skipped.
+        0x13, 0x02, 0xf0, 0x0f,
+
+        # label:
         # addi x4, x0, 0x55
         0x13, 0x02, 0x50, 0x05,
 
