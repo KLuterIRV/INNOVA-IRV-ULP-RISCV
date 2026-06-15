@@ -130,6 +130,44 @@ module tt_um_kluterirv_rv32e_core (
         );
 
     // ---------------------------------------------------------------------
+    // UART0 peripheral
+    // ---------------------------------------------------------------------
+    //
+    // Current use:
+    //   uio_out[0] -> UART0 TX
+    //   uio_in[1]  -> UART0 RX
+    //
+    // Debug mode:
+    //   ui_in[2] = 1 exposes UART0 RX data on uo_out.
+    // This is only for verification until the core has a clean LW path.
+
+    reg  [7:0] uart0_tx_data;
+    reg        uart0_tx_start;
+    wire       uart0_tx_busy;
+    wire       uart0_tx;
+
+    wire [7:0] uart0_rx_data;
+    wire       uart0_rx_valid;
+
+    wire uart0_rx_debug_mode;
+    assign uart0_rx_debug_mode = rst_n && ui_in[2];
+
+    uart0 #(
+        .CLKS_PER_BIT(8)
+    ) u_uart0 (
+        .clk      (clk),
+        .rst      (rst),
+        .tx_data  (uart0_tx_data),
+        .tx_start (uart0_tx_start),
+        .tx_busy  (uart0_tx_busy),
+        .tx       (uart0_tx),
+        .rx       (uio_in[1]),
+        .rx_clear (1'b0),
+        .rx_data  (uart0_rx_data),
+        .rx_valid (uart0_rx_valid)
+    );
+
+    // ---------------------------------------------------------------------
     // Unified 64x16 SRAM memory
     // ---------------------------------------------------------------------
 
@@ -207,13 +245,18 @@ module tt_um_kluterirv_rv32e_core (
             pc        <= 32'd0;
             instr_lo  <= 16'd0;
             instr_reg <= 32'd0;
-            out_reg   <= 8'd0;
-            halted    <= 1'b0;
+            out_reg         <= 8'd0;
+            halted          <= 1'b0;
+            uart0_tx_data   <= 8'd0;
+            uart0_tx_start  <= 1'b0;
             x1        <= 32'd0;
             x2        <= 32'd0;
             x3        <= 32'd0;
             x4        <= 32'd0;
         end else begin
+            // Default pulse value for UART0 TX.
+            uart0_tx_start <= 1'b0;
+
             case (state)
 
                 S_ADDR_LO: begin
@@ -277,6 +320,11 @@ module tt_um_kluterirv_rv32e_core (
                                 if (funct3 == 3'b010) begin
                                     if ((rs1_val + imm_s) == 32'h1000_0000) begin
                                         out_reg <= rs2_val[7:0];
+                                    end else if ((rs1_val + imm_s) == 32'h1000_0004) begin
+                                        if (!uart0_tx_busy) begin
+                                            uart0_tx_data  <= rs2_val[7:0];
+                                            uart0_tx_start <= 1'b1;
+                                        end
                                     end
                                 end
                             end
@@ -320,10 +368,13 @@ module tt_um_kluterirv_rv32e_core (
     wire [7:0] boot_debug_byte;
     assign boot_debug_byte = boot_byte_sel ? q1 : q0;
 
-    assign uo_out = ena ? (boot_mode ? boot_debug_byte : out_reg) : 8'd0;
+    assign uo_out = ena
+        ? (uart0_rx_debug_mode ? (uart0_rx_valid ? uart0_rx_data : 8'd0)
+           : (boot_mode ? boot_debug_byte : out_reg))
+        : 8'd0;
 
-    assign uio_out = 8'd0;
-    assign uio_oe  = 8'd0;
+    assign uio_out = {7'd0, uart0_tx};
+    assign uio_oe  = 8'b0000_0001;
 
 endmodule
 
