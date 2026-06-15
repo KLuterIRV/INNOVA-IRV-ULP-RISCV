@@ -10,6 +10,7 @@ SRC_DIR = $(PWD)/../src
 PROJECT_SOURCES = \
 	top/tt_um_kluterirv_rv32e_core.v \
 	peripherals/uart0.v \
+	peripherals/i2c0.v \
 	macro_blackboxes/gf180mcu_fd_ip_sram__sram64x8m8wm1_blackbox.v
 
 ifneq ($(GATES),yes)

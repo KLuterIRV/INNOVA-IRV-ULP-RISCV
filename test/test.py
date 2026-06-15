@@ -3,7 +3,39 @@ from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles
 
 
-CLKS_PER_BIT = 8
+def word_to_bytes(word):
+    return [
+        word & 0xFF,
+        (word >> 8) & 0xFF,
+        (word >> 16) & 0xFF,
+        (word >> 24) & 0xFF,
+    ]
+
+
+def enc_lui(rd, imm20):
+    return ((imm20 & 0xFFFFF) << 12) | ((rd & 0x1F) << 7) | 0x37
+
+
+def enc_addi(rd, rs1, imm):
+    return ((imm & 0xFFF) << 20) | ((rs1 & 0x1F) << 15) | (0 << 12) | ((rd & 0x1F) << 7) | 0x13
+
+
+def enc_lw(rd, rs1, imm):
+    return ((imm & 0xFFF) << 20) | ((rs1 & 0x1F) << 15) | (2 << 12) | ((rd & 0x1F) << 7) | 0x03
+
+
+def enc_sw(rs2, rs1, imm):
+    imm12 = imm & 0xFFF
+    imm_11_5 = (imm12 >> 5) & 0x7F
+    imm_4_0 = imm12 & 0x1F
+    return (
+        (imm_11_5 << 25)
+        | ((rs2 & 0x1F) << 20)
+        | ((rs1 & 0x1F) << 15)
+        | (2 << 12)
+        | (imm_4_0 << 7)
+        | 0x23
+    )
 
 
 async def write_byte(dut, addr, data):
@@ -16,114 +48,62 @@ async def write_byte(dut, addr, data):
     await ClockCycles(dut.clk, 1)
 
 
-def set_uart_rx_pin(dut, bit):
-    value = int(dut.uio_in.value) if dut.uio_in.value.is_resolvable else 0
-
-    if bit:
-        value |= 0x02      # uio_in[1] = 1
-    else:
-        value &= ~0x02     # uio_in[1] = 0
-
-    dut.uio_in.value = value
-
-
-async def uart_rx_send_byte(dut, value):
-    # UART frame on uio_in[1]:
-    # idle high, start low, 8 data bits LSB first, stop high.
-
-    set_uart_rx_pin(dut, 1)
-    await ClockCycles(dut.clk, CLKS_PER_BIT * 3)
-
-    # Start bit
-    set_uart_rx_pin(dut, 0)
-    await ClockCycles(dut.clk, CLKS_PER_BIT)
-
-    # Data bits
-    for i in range(8):
-        set_uart_rx_pin(dut, (value >> i) & 1)
-        await ClockCycles(dut.clk, CLKS_PER_BIT)
-
-    # Stop bit
-    set_uart_rx_pin(dut, 1)
-    await ClockCycles(dut.clk, CLKS_PER_BIT)
-
-    # Idle gap
-    set_uart_rx_pin(dut, 1)
-    await ClockCycles(dut.clk, CLKS_PER_BIT * 3)
-
-
 @cocotb.test()
 async def test_project(dut):
-    dut._log.info("Start RV32E UART0 RX via LW test")
+    dut._log.info("Start RV32E I2C0 minimal peripheral test")
 
     clock = Clock(dut.clk, 10, unit="us")
     cocotb.start_soon(clock.start())
 
     dut.ena.value = 1
     dut.ui_in.value = 0
-    dut.uio_in.value = 0x02  # UART RX idle high on uio_in[1]
+    dut.uio_in.value = 0x0E  # UART RX idle high + I2C SCL/SDA pulled high
     dut.rst_n.value = 0
 
     await ClockCycles(dut.clk, 10)
 
-    # Program:
-    #   x2 = 0x1000_0000
-    #   wait with NOPs while cocotb sends UART byte
-    #   x4 = UART0 RX data using LW
-    #   GPIO output = x4
-    #   UART0 TX sends x4
-    #   halt
-    program = [
-        # lui x2, 0x10000
-        0x37, 0x01, 0x00, 0x10,
+    words = [
+        enc_lui(2, 0x10000),     # x2 = 0x1000_0000
+
+        enc_lw(4, 2, 0x18),      # x4 = I2C0 status, expect SCL/SDA input high -> 0x03
+        enc_sw(4, 2, 0x00),      # GPIO output = status
+
+        enc_addi(4, 0, 0x03),    # x4 = 0x03, drive SCL/SDA low
+        enc_sw(4, 2, 0x10),      # I2C0 control = 0x03
+
+        0x00100073,              # ebreak
     ]
 
-    # 27 NOPs. The current SRAM program limit is 128 bytes.
-    # Total program size:
-    # 1 LUI + 27 NOP + LW + SW GPIO + SW UART + EBREAK = 32 instructions.
-    for _ in range(27):
-        program += [
-            # nop = addi x0, x0, 0
-            0x13, 0x00, 0x00, 0x00,
-        ]
-
-    program += [
-        # lw x4, 12(x2)
-        # UART0 RX data register at 0x1000_000C
-        0x03, 0x22, 0xc1, 0x00,
-
-        # sw x4, 0(x2)
-        # GPIO output register -> uo_out = received byte
-        0x23, 0x20, 0x41, 0x00,
-
-        # sw x4, 4(x2)
-        # UART0 TX data register -> transmit received byte
-        0x23, 0x22, 0x41, 0x00,
-
-        # ebreak
-        0x73, 0x00, 0x10, 0x00,
-    ]
-
-    assert len(program) == 128, f"Program must be exactly 128 bytes, got {len(program)}"
+    program = []
+    for word in words:
+        program += word_to_bytes(word)
 
     dut._log.info("Reset and program SRAM")
     for addr, byte in enumerate(program):
         await write_byte(dut, addr, byte)
 
     dut.ui_in.value = 0
-    dut.uio_in.value = 0x02
+    dut.uio_in.value = 0x0E
 
     await ClockCycles(dut.clk, 5)
 
-    dut._log.info("Release reset and send UART RX byte")
+    dut._log.info("Release reset and execute program")
     dut.rst_n.value = 1
 
-    # Send byte while CPU executes NOPs.
-    await uart_rx_send_byte(dut, 0xA5)
+    await ClockCycles(dut.clk, 120)
 
-    await ClockCycles(dut.clk, 220)
+    observed_status = int(dut.uo_out.value)
+    observed_uio_oe = int(dut.uio_oe.value)
+    observed_uio_out = int(dut.uio_out.value)
 
-    observed = int(dut.uo_out.value)
-    dut._log.info(f"uo_out = 0x{observed:02x}")
+    dut._log.info(f"uo_out status = 0x{observed_status:02x}")
+    dut._log.info(f"uio_oe       = 0x{observed_uio_oe:02x}")
+    dut._log.info(f"uio_out      = 0x{observed_uio_out:02x}")
 
-    assert observed == 0xA5, f"Expected uo_out=0xA5, got 0x{observed:02x}"
+    assert observed_status == 0x03, f"Expected I2C status 0x03, got 0x{observed_status:02x}"
+
+    # uio_oe[2] and uio_oe[3] must be enabled after writing control=0x03.
+    assert (observed_uio_oe & 0x0C) == 0x0C, f"Expected I2C OE bits high, got uio_oe=0x{observed_uio_oe:02x}"
+
+    # Open-drain drive-low means output values on SCL/SDA are 0.
+    assert (observed_uio_out & 0x0C) == 0x00, f"Expected I2C output bits low, got uio_out=0x{observed_uio_out:02x}"

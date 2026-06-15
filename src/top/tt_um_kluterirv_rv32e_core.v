@@ -169,6 +169,41 @@ module tt_um_kluterirv_rv32e_core (
     );
 
     // ---------------------------------------------------------------------
+    // I2C0 minimal open-drain peripheral
+    // ---------------------------------------------------------------------
+    //
+    // Memory map:
+    //   0x1000_0010 -> I2C0 control
+    //                  bit 0 = drive SCL low
+    //                  bit 1 = drive SDA low
+    //   0x1000_0018 -> I2C0 status
+    //                  bit 0 = SCL input
+    //                  bit 1 = SDA input
+    //                  bit 2 = SCL drive-low state
+    //                  bit 3 = SDA drive-low state
+
+    reg  [7:0] i2c0_ctrl;
+    wire [7:0] i2c0_status;
+
+    wire i2c0_scl_out;
+    wire i2c0_scl_oe;
+    wire i2c0_sda_out;
+    wire i2c0_sda_oe;
+
+    i2c0 u_i2c0 (
+        .clk     (clk),
+        .rst     (rst),
+        .ctrl    (i2c0_ctrl),
+        .status  (i2c0_status),
+        .scl_in  (uio_in[2]),
+        .sda_in  (uio_in[3]),
+        .scl_out (i2c0_scl_out),
+        .scl_oe  (i2c0_scl_oe),
+        .sda_out (i2c0_sda_out),
+        .sda_oe  (i2c0_sda_oe)
+    );
+
+    // ---------------------------------------------------------------------
     // Unified 64x16 SRAM memory
     // ---------------------------------------------------------------------
 
@@ -250,6 +285,7 @@ module tt_um_kluterirv_rv32e_core (
             halted          <= 1'b0;
             uart0_tx_data   <= 8'd0;
             uart0_tx_start  <= 1'b0;
+            i2c0_ctrl      <= 8'd0;
             uart0_rx_clear  <= 1'b0;
             x1        <= 32'd0;
             x2        <= 32'd0;
@@ -344,6 +380,15 @@ module tt_um_kluterirv_rv32e_core (
 
                                         // Reading RX data consumes the byte.
                                         uart0_rx_clear <= 1'b1;
+                                    end else if ((rs1_val + imm_i) == 32'h1000_0018) begin
+                                        // I2C0 status.
+                                        case (rd)
+                                            5'd1: x1 <= {24'd0, i2c0_status};
+                                            5'd2: x2 <= {24'd0, i2c0_status};
+                                            5'd3: x3 <= {24'd0, i2c0_status};
+                                            5'd4: x4 <= {24'd0, i2c0_status};
+                                            default: begin end
+                                        endcase
                                     end
                                 end
                             end
@@ -360,6 +405,8 @@ module tt_um_kluterirv_rv32e_core (
                                             uart0_tx_data  <= rs2_val[7:0];
                                             uart0_tx_start <= 1'b1;
                                         end
+                                    end else if ((rs1_val + imm_s) == 32'h1000_0010) begin
+                                        i2c0_ctrl <= rs2_val[7:0];
                                     end
                                 end
                             end
@@ -408,8 +455,8 @@ module tt_um_kluterirv_rv32e_core (
            : (boot_mode ? boot_debug_byte : out_reg))
         : 8'd0;
 
-    assign uio_out = {7'd0, uart0_tx};
-    assign uio_oe  = 8'b0000_0001;
+    assign uio_out = {4'd0, i2c0_sda_out, i2c0_scl_out, 1'b0, uart0_tx};
+    assign uio_oe  = {4'd0, i2c0_sda_oe,  i2c0_scl_oe,  1'b0, 1'b1};
 
 endmodule
 
