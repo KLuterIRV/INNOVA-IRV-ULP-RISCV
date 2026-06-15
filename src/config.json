@@ -39,11 +39,11 @@
   "gf180mcu_fd_ip_sram__sram64x8m8wm1": {
     "instances": {
       "u_mem_b0": {
-        "location": [80, 40],
+        "location": [40, 40],
         "orientation": "N"
       },
       "u_mem_b1": {
-        "location": [880, 40],
+        "location": [965, 40],
         "orientation": "N"
       }
     },
