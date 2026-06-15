@@ -148,6 +148,7 @@ module tt_um_kluterirv_rv32e_core (
 
     wire [7:0] uart0_rx_data;
     wire       uart0_rx_valid;
+    reg        uart0_rx_clear;
 
     wire uart0_rx_debug_mode;
     assign uart0_rx_debug_mode = rst_n && ui_in[2];
@@ -162,7 +163,7 @@ module tt_um_kluterirv_rv32e_core (
         .tx_busy  (uart0_tx_busy),
         .tx       (uart0_tx),
         .rx       (uio_in[1]),
-        .rx_clear (1'b0),
+        .rx_clear (uart0_rx_clear),
         .rx_data  (uart0_rx_data),
         .rx_valid (uart0_rx_valid)
     );
@@ -249,6 +250,7 @@ module tt_um_kluterirv_rv32e_core (
             halted          <= 1'b0;
             uart0_tx_data   <= 8'd0;
             uart0_tx_start  <= 1'b0;
+            uart0_rx_clear  <= 1'b0;
             x1        <= 32'd0;
             x2        <= 32'd0;
             x3        <= 32'd0;
@@ -256,6 +258,7 @@ module tt_um_kluterirv_rv32e_core (
         end else begin
             // Default pulse value for UART0 TX.
             uart0_tx_start <= 1'b0;
+            uart0_rx_clear <= 1'b0;
 
             case (state)
 
@@ -310,6 +313,38 @@ module tt_um_kluterirv_rv32e_core (
                                         5'd4: x4 <= rs1_val + imm_i;
                                         default: begin end
                                     endcase
+                                end
+                            end
+
+                            // LOAD: minimal memory-mapped peripheral reads
+                            7'b0000011: begin
+                                pc <= pc + 32'd4;
+
+                                if (funct3 == 3'b010) begin
+                                    if ((rs1_val + imm_i) == 32'h1000_0008) begin
+                                        // UART0 status:
+                                        // bit 0 = tx_busy
+                                        // bit 1 = rx_valid
+                                        case (rd)
+                                            5'd1: x1 <= {30'd0, uart0_rx_valid, uart0_tx_busy};
+                                            5'd2: x2 <= {30'd0, uart0_rx_valid, uart0_tx_busy};
+                                            5'd3: x3 <= {30'd0, uart0_rx_valid, uart0_tx_busy};
+                                            5'd4: x4 <= {30'd0, uart0_rx_valid, uart0_tx_busy};
+                                            default: begin end
+                                        endcase
+                                    end else if ((rs1_val + imm_i) == 32'h1000_000C) begin
+                                        // UART0 RX data.
+                                        case (rd)
+                                            5'd1: x1 <= {24'd0, uart0_rx_data};
+                                            5'd2: x2 <= {24'd0, uart0_rx_data};
+                                            5'd3: x3 <= {24'd0, uart0_rx_data};
+                                            5'd4: x4 <= {24'd0, uart0_rx_data};
+                                            default: begin end
+                                        endcase
+
+                                        // Reading RX data consumes the byte.
+                                        uart0_rx_clear <= 1'b1;
+                                    end
                                 end
                             end
 
