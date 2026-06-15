@@ -421,6 +421,91 @@ def emit_module(out, name, ports, dirs):
         return
 
     # ------------------------------------------------------------
+    # Generic AOI/OAI gates
+    # ------------------------------------------------------------
+    #
+    # AOI = And-Or-Invert:
+    #   aoi32 -> ~((A1 & A2 & A3) | (B1 & B2))
+    #
+    # OAI = Or-And-Invert:
+    #   oai32 -> ~((A1 | A2 | A3) & (B1 | B2))
+    #
+    # This catches cells such as aoi31/aoi32/oai32/oai33 even if
+    # they were not listed explicitly above.
+    m_aoi = re.fullmatch(r"aoi([0-9]+)", base)
+    if m_aoi and target:
+        digits = [int(d) for d in m_aoi.group(1)]
+        group_letters = ["A", "B", "C", "D"]
+        terms = []
+
+        for group_index, width in enumerate(digits):
+            letter = group_letters[group_index]
+            pins = []
+
+            if width == 1:
+                if has(ports, letter):
+                    pins.append(letter)
+                elif has(ports, f"{letter}1"):
+                    pins.append(f"{letter}1")
+            else:
+                for i in range(1, width + 1):
+                    pin = f"{letter}{i}"
+                    if has(ports, pin):
+                        pins.append(pin)
+
+            if pins:
+                if len(pins) == 1:
+                    terms.append(pins[0])
+                else:
+                    terms.append("(" + " & ".join(pins) + ")")
+
+        if terms:
+            write_assign(out, target, "~(" + " | ".join(terms) + ")")
+        else:
+            for o in outs:
+                write_assign(out, o, "1'b0")
+
+        out.write("endmodule\n\n")
+        return
+
+    m_oai = re.fullmatch(r"oai([0-9]+)", base)
+    if m_oai and target:
+        digits = [int(d) for d in m_oai.group(1)]
+        group_letters = ["A", "B", "C", "D"]
+        terms = []
+
+        for group_index, width in enumerate(digits):
+            letter = group_letters[group_index]
+            pins = []
+
+            if width == 1:
+                if has(ports, letter):
+                    pins.append(letter)
+                elif has(ports, f"{letter}1"):
+                    pins.append(f"{letter}1")
+            else:
+                for i in range(1, width + 1):
+                    pin = f"{letter}{i}"
+                    if has(ports, pin):
+                        pins.append(pin)
+
+            if pins:
+                if len(pins) == 1:
+                    terms.append(pins[0])
+                else:
+                    terms.append("(" + " | ".join(pins) + ")")
+
+        if terms:
+            write_assign(out, target, "~(" + " & ".join(terms) + ")")
+        else:
+            for o in outs:
+                write_assign(out, o, "1'b0")
+
+        out.write("endmodule\n\n")
+        return
+
+
+    # ------------------------------------------------------------
     # Fallback
     # ------------------------------------------------------------
     for o in outs:

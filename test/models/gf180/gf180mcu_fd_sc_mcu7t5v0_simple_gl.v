@@ -1251,21 +1251,21 @@ module gf180mcu_fd_sc_mcu7t5v0__oai222_1(C2, C1, B1, ZN, B2, A2, A1, VDD, VNW, V
   input C2, C1, B1, B2, A2, A1, VNW, VPW;
   inout VDD, VSS;
   output ZN;
-  assign ZN = 1'b0;
+  assign ZN = ~((A1 | A2) & (B1 | B2) & (C1 | C2));
 endmodule
 
 module gf180mcu_fd_sc_mcu7t5v0__oai222_2(ZN, C1, C2, B1, B2, A1, A2, VDD, VNW, VPW, VSS);
   input C1, C2, B1, B2, A1, A2, VNW, VPW;
   inout VDD, VSS;
   output ZN;
-  assign ZN = 1'b0;
+  assign ZN = ~((A1 | A2) & (B1 | B2) & (C1 | C2));
 endmodule
 
 module gf180mcu_fd_sc_mcu7t5v0__oai222_4(C1, ZN, C2, B1, B2, A1, A2, VDD, VNW, VPW, VSS);
   input C1, C2, B1, B2, A1, A2, VNW, VPW;
   inout VDD, VSS;
   output ZN;
-  assign ZN = 1'b0;
+  assign ZN = ~((A1 | A2) & (B1 | B2) & (C1 | C2));
 endmodule
 
 module gf180mcu_fd_sc_mcu7t5v0__oai22_1(B2, B1, ZN, A1, A2, VDD, VNW, VPW, VSS);
@@ -1314,42 +1314,42 @@ module gf180mcu_fd_sc_mcu7t5v0__oai32_1(A3, A2, A1, ZN, B1, B2, VDD, VNW, VPW, V
   input A3, A2, A1, B1, B2, VNW, VPW;
   inout VDD, VSS;
   output ZN;
-  assign ZN = 1'b0;
+  assign ZN = ~((A1 | A2 | A3) & (B1 | B2));
 endmodule
 
 module gf180mcu_fd_sc_mcu7t5v0__oai32_2(A3, A2, A1, ZN, B2, B1, VDD, VNW, VPW, VSS);
   input A3, A2, A1, B2, B1, VNW, VPW;
   inout VDD, VSS;
   output ZN;
-  assign ZN = 1'b0;
+  assign ZN = ~((A1 | A2 | A3) & (B1 | B2));
 endmodule
 
 module gf180mcu_fd_sc_mcu7t5v0__oai32_4(A2, A3, A1, ZN, B2, B1, VDD, VNW, VPW, VSS);
   input A2, A3, A1, B2, B1, VNW, VPW;
   inout VDD, VSS;
   output ZN;
-  assign ZN = 1'b0;
+  assign ZN = ~((A1 | A2 | A3) & (B1 | B2));
 endmodule
 
 module gf180mcu_fd_sc_mcu7t5v0__oai33_1(B3, B2, B1, ZN, A1, A2, A3, VDD, VNW, VPW, VSS);
   input B3, B2, B1, A1, A2, A3, VNW, VPW;
   inout VDD, VSS;
   output ZN;
-  assign ZN = 1'b0;
+  assign ZN = ~((A1 | A2 | A3) & (B1 | B2 | B3));
 endmodule
 
 module gf180mcu_fd_sc_mcu7t5v0__oai33_2(B3, B2, ZN, B1, A3, A2, A1, VDD, VNW, VPW, VSS);
   input B3, B2, B1, A3, A2, A1, VNW, VPW;
   inout VDD, VSS;
   output ZN;
-  assign ZN = 1'b0;
+  assign ZN = ~((A1 | A2 | A3) & (B1 | B2 | B3));
 endmodule
 
 module gf180mcu_fd_sc_mcu7t5v0__oai33_4(B2, B3, B1, ZN, A1, A2, A3, VDD, VNW, VPW, VSS);
   input B2, B3, B1, A1, A2, A3, VNW, VPW;
   inout VDD, VSS;
   output ZN;
-  assign ZN = 1'b0;
+  assign ZN = ~((A1 | A2 | A3) & (B1 | B2 | B3));
 endmodule
 
 module gf180mcu_fd_sc_mcu7t5v0__or2_1(A1, A2, Z, VDD, VNW, VPW, VSS);
