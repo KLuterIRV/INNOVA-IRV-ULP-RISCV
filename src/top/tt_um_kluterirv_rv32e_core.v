@@ -226,6 +226,30 @@ module tt_um_kluterirv_rv32e_core (
     );
 
     // ---------------------------------------------------------------------
+    // Peripheral automatic stall
+    // ---------------------------------------------------------------------
+    //
+    // If the core writes to a slow peripheral while it is busy, the current
+    // instruction is held in S_EXEC and PC is not advanced.
+
+    wire [31:0] store_addr;
+    wire        store_is_sw;
+    wire        i2c0_busy;
+    wire        peripheral_store_stall;
+
+    assign store_addr  = rs1_val + imm_s;
+    assign store_is_sw = (opcode == 7'b0100011) && (funct3 == 3'b010);
+    assign i2c0_busy   = i2c0_status[0];
+
+    assign peripheral_store_stall =
+        store_is_sw &&
+        (
+            ((store_addr == 32'h1000_0004) && uart0_tx_busy) ||
+            (((store_addr == 32'h1000_0010) ||
+              (store_addr == 32'h1000_001C)) && i2c0_busy)
+        );
+
+    // ---------------------------------------------------------------------
     // Unified 64x16 SRAM memory
     // ---------------------------------------------------------------------
 
@@ -351,6 +375,10 @@ module tt_um_kluterirv_rv32e_core (
                     if (instr_reg == 32'h0010_0073) begin
                         halted <= 1'b1;
                         state  <= S_HALT;
+                    end else if (peripheral_store_stall) begin
+                        // Wait here until the selected peripheral is ready.
+                        // PC is not advanced, so the same SW instruction is retried.
+                        state <= S_EXEC;
                     end else begin
 
                         case (opcode)
