@@ -12,8 +12,9 @@ module uart0 #(
     output wire       tx_busy,
     output wire       tx,
 
-    // RX reserved interface, not fully implemented yet
+    // RX register interface
     input  wire       rx,
+    input  wire       rx_clear,
     output wire [7:0] rx_data,
     output wire       rx_valid
 );
@@ -112,28 +113,130 @@ module uart0 #(
     end
 
     // ---------------------------------------------------------------------
-    // UART RX placeholder
+    // UART RX
     // ---------------------------------------------------------------------
     //
-    // RX is intentionally kept as a reserved interface for now.
-    // We keep a small synchronizer so the rx input is not completely unused,
-    // but we do not expose received bytes yet.
+    // Simple receiver:
+    //   - Detects falling edge/start bit.
+    //   - Samples in the middle of the start bit.
+    //   - Samples each data bit every CLKS_PER_BIT cycles.
+    //   - Stores one byte.
+    //   - Raises rx_valid until rx_clear is asserted.
+    //
+    // No FIFO.
+    // No parity.
+    // No framing error flag yet.
+    // No interrupt yet.
+
+    localparam [2:0]
+        RX_IDLE  = 3'd0,
+        RX_START = 3'd1,
+        RX_DATA  = 3'd2,
+        RX_STOP  = 3'd3,
+        RX_DONE  = 3'd4;
+
+    reg [2:0]  rx_state;
+    reg [15:0] rx_clk_count;
+    reg [2:0]  rx_bit_index;
+    reg [7:0]  rx_shift;
+    reg [7:0]  rx_data_reg;
+    reg        rx_valid_reg;
 
     reg rx_meta;
     reg rx_sync;
 
+    assign rx_data  = rx_data_reg;
+    assign rx_valid = rx_valid_reg;
+
     always @(posedge clk) begin
         if (rst) begin
-            rx_meta <= 1'b1;
-            rx_sync <= 1'b1;
+            rx_state     <= RX_IDLE;
+            rx_clk_count <= 16'd0;
+            rx_bit_index <= 3'd0;
+            rx_shift     <= 8'd0;
+            rx_data_reg  <= 8'd0;
+            rx_valid_reg <= 1'b0;
+            rx_meta      <= 1'b1;
+            rx_sync      <= 1'b1;
         end else begin
+            // Synchronize asynchronous RX input.
             rx_meta <= rx;
             rx_sync <= rx_meta;
+
+            if (rx_clear) begin
+                rx_valid_reg <= 1'b0;
+            end
+
+            case (rx_state)
+
+                RX_IDLE: begin
+                    rx_clk_count <= 16'd0;
+                    rx_bit_index <= 3'd0;
+
+                    // Start bit detection.
+                    if (rx_sync == 1'b0) begin
+                        rx_state <= RX_START;
+                    end
+                end
+
+                RX_START: begin
+                    // Sample in the middle of the start bit.
+                    if (rx_clk_count == ((CLKS_PER_BIT / 2) - 1)) begin
+                        if (rx_sync == 1'b0) begin
+                            rx_clk_count <= 16'd0;
+                            rx_state     <= RX_DATA;
+                        end else begin
+                            rx_state <= RX_IDLE;
+                        end
+                    end else begin
+                        rx_clk_count <= rx_clk_count + 16'd1;
+                    end
+                end
+
+                RX_DATA: begin
+                    if (rx_clk_count == (CLKS_PER_BIT - 1)) begin
+                        rx_clk_count <= 16'd0;
+                        rx_shift[rx_bit_index] <= rx_sync;
+
+                        if (rx_bit_index == 3'd7) begin
+                            rx_bit_index <= 3'd0;
+                            rx_state     <= RX_STOP;
+                        end else begin
+                            rx_bit_index <= rx_bit_index + 3'd1;
+                        end
+                    end else begin
+                        rx_clk_count <= rx_clk_count + 16'd1;
+                    end
+                end
+
+                RX_STOP: begin
+                    if (rx_clk_count == (CLKS_PER_BIT - 1)) begin
+                        rx_clk_count <= 16'd0;
+
+                        // Accept the byte only if stop bit is high.
+                        if (rx_sync == 1'b1) begin
+                            rx_data_reg  <= rx_shift;
+                            rx_valid_reg <= 1'b1;
+                        end
+
+                        rx_state <= RX_DONE;
+                    end else begin
+                        rx_clk_count <= rx_clk_count + 16'd1;
+                    end
+                end
+
+                RX_DONE: begin
+                    // Return to idle. rx_valid_reg remains set until rx_clear.
+                    rx_state <= RX_IDLE;
+                end
+
+                default: begin
+                    rx_state <= RX_IDLE;
+                end
+
+            endcase
         end
     end
-
-    assign rx_data  = 8'd0;
-    assign rx_valid = 1'b0;
 
 endmodule
 
