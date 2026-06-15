@@ -1,5 +1,7 @@
 `default_nettype none
 
+/* verilator lint_off WIDTHEXPAND */
+
 module uart0 #(
     parameter integer CLKS_PER_BIT = 8
 ) (
@@ -239,5 +241,7 @@ module uart0 #(
     end
 
 endmodule
+
+/* verilator lint_on WIDTHEXPAND */
 
 `default_nettype wire

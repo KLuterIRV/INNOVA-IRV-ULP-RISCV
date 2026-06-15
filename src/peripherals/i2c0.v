@@ -85,6 +85,17 @@ module i2c0 (
     assign sda_oe = sda_drive_low;
 
     // ---------------------------------------------------------------------
+    // Lint-only reserved signal usage
+    // ---------------------------------------------------------------------
+    //
+    // ctrl_wr_data[7:5] are intentionally reserved for future I2C commands.
+    // Keeping this reduction prevents unused-signal warnings without changing
+    // functional behaviour.
+
+    wire unused_i2c0_reserved_bits;
+    assign unused_i2c0_reserved_bits = |ctrl_wr_data[7:5];
+
+    // ---------------------------------------------------------------------
     // FSM
     // ---------------------------------------------------------------------
 
@@ -117,7 +128,6 @@ module i2c0 (
     reg [2:0] bit_index;
     reg [7:0] shifter;
 
-    reg cmd_start;
     reg cmd_stop;
     reg cmd_write;
     reg cmd_read;
@@ -146,7 +156,6 @@ module i2c0 (
             bit_index          <= 3'd0;
             shifter            <= 8'd0;
 
-            cmd_start          <= 1'b0;
             cmd_stop           <= 1'b0;
             cmd_write          <= 1'b0;
             cmd_read           <= 1'b0;
@@ -162,7 +171,6 @@ module i2c0 (
             end
 
             if (ctrl_we && !busy) begin
-                cmd_start          <= ctrl_wr_data[0];
                 cmd_stop           <= ctrl_wr_data[1];
                 cmd_write          <= ctrl_wr_data[2];
                 cmd_read           <= ctrl_wr_data[3];
