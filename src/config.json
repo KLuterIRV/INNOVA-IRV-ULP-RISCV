@@ -13,7 +13,7 @@
 
   "//": "PL_TARGET_DENSITY_PCT - You can increase this if Global Placement fails with error GPL-0302.",
   "//": "Users have reported that values up to 80 worked well for them.",
-  "PL_TARGET_DENSITY_PCT": 30,
+  "PL_TARGET_DENSITY_PCT": 40,
 
   "//": "CLOCK_PERIOD - Increase this in case you are getting setup time violations.",
   "//": "The value is in nanoseconds, so 20ns == 50MHz.",
@@ -39,11 +39,11 @@
   "gf180mcu_fd_ip_sram__sram64x8m8wm1": {
     "instances": {
       "u_mem_b0": {
-        "location": [40, 40],
+        "location": [10, 40],
         "orientation": "N"
       },
       "u_mem_b1": {
-        "location": [965, 40],
+        "location": [995, 40],
         "orientation": "N"
       }
     },
