@@ -28,6 +28,7 @@ def enc_sw(rs2, rs1, imm):
     imm12 = imm & 0xFFF
     imm_11_5 = (imm12 >> 5) & 0x7F
     imm_4_0 = imm12 & 0x1F
+
     return (
         (imm_11_5 << 25)
         | ((rs2 & 0x1F) << 20)
@@ -50,33 +51,51 @@ async def write_byte(dut, addr, data):
 
 @cocotb.test()
 async def test_project(dut):
-    dut._log.info("Start RV32E I2C0 minimal peripheral test")
+    dut._log.info("Start RV32E I2C0 byte-engine test")
 
     clock = Clock(dut.clk, 10, unit="us")
     cocotb.start_soon(clock.start())
 
     dut.ena.value = 1
     dut.ui_in.value = 0
-    dut.uio_in.value = 0x0E  # UART RX idle high + I2C SCL/SDA pulled high
+
+    # uio_in:
+    # bit 1 = UART RX idle high
+    # bit 2 = I2C SCL pulled high
+    # bit 3 = I2C SDA pulled high
+    dut.uio_in.value = 0x0E
     dut.rst_n.value = 0
 
     await ClockCycles(dut.clk, 10)
 
     words = [
-        enc_lui(2, 0x10000),     # x2 = 0x1000_0000
+        enc_lui(2, 0x10000),       # x2 = 0x1000_0000
 
-        enc_lw(4, 2, 0x18),      # x4 = I2C0 status, expect SCL/SDA input high -> 0x03
-        enc_sw(4, 2, 0x00),      # GPIO output = status
+        enc_addi(4, 0, 0x01),      # x4 = 1
+        enc_sw(4, 2, 0x1C),        # I2C0_DIV = 1
 
-        enc_addi(4, 0, 0x03),    # x4 = 0x03, drive SCL/SDA low
-        enc_sw(4, 2, 0x10),      # I2C0 control = 0x03
+        enc_addi(4, 0, 0x0A0),     # x4 = 0xA0
+        enc_sw(4, 2, 0x14),        # I2C0_DATA = 0xA0
 
-        0x00100073,              # ebreak
+        enc_addi(4, 0, 0x07),      # START + STOP + WRITE
+        enc_sw(4, 2, 0x10),        # I2C0_CTRL = 0x07
+    ]
+
+    # Wait for I2C engine to complete.
+    for _ in range(16):
+        words.append(enc_addi(0, 0, 0))  # NOP
+
+    words += [
+        enc_lw(4, 2, 0x18),        # x4 = I2C0_STATUS
+        enc_sw(4, 2, 0x00),        # GPIO output = status
+        0x00100073,                # EBREAK
     ]
 
     program = []
     for word in words:
         program += word_to_bytes(word)
+
+    assert len(program) <= 128, f"Program too large: {len(program)} bytes"
 
     dut._log.info("Reset and program SRAM")
     for addr, byte in enumerate(program):
@@ -90,20 +109,25 @@ async def test_project(dut):
     dut._log.info("Release reset and execute program")
     dut.rst_n.value = 1
 
-    await ClockCycles(dut.clk, 120)
+    await ClockCycles(dut.clk, 220)
 
     observed_status = int(dut.uo_out.value)
-    observed_uio_oe = int(dut.uio_oe.value)
-    observed_uio_out = int(dut.uio_out.value)
+    observed_oe = int(dut.uio_oe.value)
+    observed_out = int(dut.uio_out.value)
 
-    dut._log.info(f"uo_out status = 0x{observed_status:02x}")
-    dut._log.info(f"uio_oe       = 0x{observed_uio_oe:02x}")
-    dut._log.info(f"uio_out      = 0x{observed_uio_out:02x}")
+    dut._log.info(f"I2C0 status via uo_out = 0x{observed_status:02x}")
+    dut._log.info(f"uio_oe  = 0x{observed_oe:02x}")
+    dut._log.info(f"uio_out = 0x{observed_out:02x}")
 
-    assert observed_status == 0x03, f"Expected I2C status 0x03, got 0x{observed_status:02x}"
+    # Expected:
+    # bit0 busy      = 0
+    # bit1 done      = 1
+    # bit2 ack_error = 1 because SDA input remains high during ACK
+    # bit3 rx_valid  = 0
+    # bit4 scl_in    = 1
+    # bit5 sda_in    = 1
+    expected = 0x36
 
-    # uio_oe[2] and uio_oe[3] must be enabled after writing control=0x03.
-    assert (observed_uio_oe & 0x0C) == 0x0C, f"Expected I2C OE bits high, got uio_oe=0x{observed_uio_oe:02x}"
-
-    # Open-drain drive-low means output values on SCL/SDA are 0.
-    assert (observed_uio_out & 0x0C) == 0x00, f"Expected I2C output bits low, got uio_out=0x{observed_uio_out:02x}"
+    assert observed_status == expected, (
+        f"Expected I2C0 status 0x{expected:02x}, got 0x{observed_status:02x}"
+    )

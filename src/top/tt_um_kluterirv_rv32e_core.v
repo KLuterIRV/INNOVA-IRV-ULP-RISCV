@@ -182,7 +182,16 @@ module tt_um_kluterirv_rv32e_core (
     //                  bit 2 = SCL drive-low state
     //                  bit 3 = SDA drive-low state
 
-    reg  [7:0] i2c0_ctrl;
+    reg  [7:0] i2c0_ctrl_wr_data;
+    reg        i2c0_ctrl_we;
+
+    reg  [7:0] i2c0_data_wr_data;
+    reg        i2c0_data_we;
+    wire [7:0] i2c0_data_rd_data;
+
+    reg  [7:0] i2c0_div_wr_data;
+    reg        i2c0_div_we;
+
     wire [7:0] i2c0_status;
 
     wire i2c0_scl_out;
@@ -191,16 +200,29 @@ module tt_um_kluterirv_rv32e_core (
     wire i2c0_sda_oe;
 
     i2c0 u_i2c0 (
-        .clk     (clk),
-        .rst     (rst),
-        .ctrl    (i2c0_ctrl),
-        .status  (i2c0_status),
-        .scl_in  (uio_in[2]),
-        .sda_in  (uio_in[3]),
-        .scl_out (i2c0_scl_out),
-        .scl_oe  (i2c0_scl_oe),
-        .sda_out (i2c0_sda_out),
-        .sda_oe  (i2c0_sda_oe)
+        .clk          (clk),
+        .rst          (rst),
+
+        .ctrl_wr_data (i2c0_ctrl_wr_data),
+        .ctrl_we      (i2c0_ctrl_we),
+
+        .data_wr_data (i2c0_data_wr_data),
+        .data_we      (i2c0_data_we),
+        .data_rd_data (i2c0_data_rd_data),
+
+        .div_wr_data  (i2c0_div_wr_data),
+        .div_we       (i2c0_div_we),
+
+        .status       (i2c0_status),
+
+        .scl_in       (uio_in[2]),
+        .sda_in       (uio_in[3]),
+
+        .scl_out      (i2c0_scl_out),
+        .scl_oe       (i2c0_scl_oe),
+
+        .sda_out      (i2c0_sda_out),
+        .sda_oe       (i2c0_sda_oe)
     );
 
     // ---------------------------------------------------------------------
@@ -285,7 +307,13 @@ module tt_um_kluterirv_rv32e_core (
             halted          <= 1'b0;
             uart0_tx_data   <= 8'd0;
             uart0_tx_start  <= 1'b0;
-            i2c0_ctrl      <= 8'd0;
+
+            i2c0_ctrl_wr_data <= 8'd0;
+            i2c0_ctrl_we      <= 1'b0;
+            i2c0_data_wr_data <= 8'd0;
+            i2c0_data_we      <= 1'b0;
+            i2c0_div_wr_data  <= 8'd0;
+            i2c0_div_we       <= 1'b0;
             uart0_rx_clear  <= 1'b0;
             x1        <= 32'd0;
             x2        <= 32'd0;
@@ -295,6 +323,9 @@ module tt_um_kluterirv_rv32e_core (
             // Default pulse value for UART0 TX.
             uart0_tx_start <= 1'b0;
             uart0_rx_clear <= 1'b0;
+            i2c0_ctrl_we <= 1'b0;
+            i2c0_data_we <= 1'b0;
+            i2c0_div_we  <= 1'b0;
 
             case (state)
 
@@ -380,6 +411,15 @@ module tt_um_kluterirv_rv32e_core (
 
                                         // Reading RX data consumes the byte.
                                         uart0_rx_clear <= 1'b1;
+                                    end else if ((rs1_val + imm_i) == 32'h1000_0014) begin
+                                        // I2C0 data read register.
+                                        case (rd)
+                                            5'd1: x1 <= {24'd0, i2c0_data_rd_data};
+                                            5'd2: x2 <= {24'd0, i2c0_data_rd_data};
+                                            5'd3: x3 <= {24'd0, i2c0_data_rd_data};
+                                            5'd4: x4 <= {24'd0, i2c0_data_rd_data};
+                                            default: begin end
+                                        endcase
                                     end else if ((rs1_val + imm_i) == 32'h1000_0018) begin
                                         // I2C0 status.
                                         case (rd)
@@ -406,7 +446,14 @@ module tt_um_kluterirv_rv32e_core (
                                             uart0_tx_start <= 1'b1;
                                         end
                                     end else if ((rs1_val + imm_s) == 32'h1000_0010) begin
-                                        i2c0_ctrl <= rs2_val[7:0];
+                                        i2c0_ctrl_wr_data <= rs2_val[7:0];
+                                        i2c0_ctrl_we      <= 1'b1;
+                                    end else if ((rs1_val + imm_s) == 32'h1000_0014) begin
+                                        i2c0_data_wr_data <= rs2_val[7:0];
+                                        i2c0_data_we      <= 1'b1;
+                                    end else if ((rs1_val + imm_s) == 32'h1000_001C) begin
+                                        i2c0_div_wr_data  <= rs2_val[7:0];
+                                        i2c0_div_we       <= 1'b1;
                                     end
                                 end
                             end
