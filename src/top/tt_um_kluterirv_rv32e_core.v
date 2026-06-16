@@ -245,8 +245,9 @@ module tt_um_kluterirv_rv32e_core (
     assign uio_oe  = {4'd0, i2c0_sda_oe,  i2c0_scl_oe,  1'b0, 1'b1};
 
     // Debug/status signals are intentionally kept for future test visibility.
+    // Use all bits so lint does not report partially-unused debug buses.
     wire unused_top_debug;
-    assign unused_top_debug = core_halted | pc_debug[0] | instr_debug[0];
+    assign unused_top_debug = core_halted | (|pc_debug) | (|instr_debug);
 
 endmodule
 
