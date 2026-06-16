@@ -351,4 +351,29 @@ async def test_project(dut):
         cycles=200,
     )
 
+    # -------------------------------------------------------------------------
+    # Test 5: physical register file x5-x8.
+    #
+    # x5 = 0x12
+    # x6 = 0x34
+    # x7 = x5 + x6 = 0x46
+    # x8 = x7 ^ x5 = 0x54
+    # GPIO = x8 = 0x54
+    # -------------------------------------------------------------------------
+
+    regfile_x8_program = [
+        enc_addi(5, 0, 0x12),
+        enc_addi(6, 0, 0x34),
+        enc_add(7, 5, 6),
+        enc_xor(8, 7, 5),
+    ] + write_gpio_program(8)
+
+    await run_program_and_check_gpio(
+        dut,
+        name="REGFILE x5-x8",
+        words=regfile_x8_program,
+        expected_gpio=0x54,
+        cycles=220,
+    )
+
     dut._log.info("All core regression tests passed")
