@@ -27,13 +27,9 @@ module tt_um_kluterirv_rv32e_core (
     //   uio_in     = byte data
     wire        boot_we;
     wire [6:0]  boot_byte_addr;
-    wire [5:0]  boot_half_addr;
-    wire        boot_byte_sel;
 
     assign boot_we        = ui_in[0];
     assign boot_byte_addr = ui_in[7:1];
-    assign boot_half_addr = boot_byte_addr[6:1];
-    assign boot_byte_sel  = boot_byte_addr[0];
 
     // ---------------------------------------------------------------------
     // CPU state
