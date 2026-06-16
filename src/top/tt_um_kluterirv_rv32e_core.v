@@ -55,8 +55,8 @@ module tt_um_kluterirv_rv32e_core (
     reg       halted;
 
     // GPIO0 peripheral interface.
-    reg        gpio0_we;
-    reg  [7:0] gpio0_wdata;
+    wire       gpio0_we;
+    wire [7:0] gpio0_wdata;
     wire [7:0] gpio0_out;
 
     // Register file writeback interface.
@@ -221,14 +221,14 @@ module tt_um_kluterirv_rv32e_core (
     //   ui_in[2] = 1 exposes UART0 RX data on uo_out.
     // This is only for verification until the core has a clean LW path.
 
-    reg  [7:0] uart0_tx_data;
-    reg        uart0_tx_start;
+    wire [7:0] uart0_tx_data;
+    wire       uart0_tx_start;
     wire       uart0_tx_busy;
     wire       uart0_tx;
 
     wire [7:0] uart0_rx_data;
     wire       uart0_rx_valid;
-    reg        uart0_rx_clear;
+    wire       uart0_rx_clear;
 
     wire uart0_rx_debug_mode;
     assign uart0_rx_debug_mode = rst_n && ui_in[2];
@@ -262,15 +262,15 @@ module tt_um_kluterirv_rv32e_core (
     //                  bit 2 = SCL drive-low state
     //                  bit 3 = SDA drive-low state
 
-    reg  [7:0] i2c0_ctrl_wr_data;
-    reg        i2c0_ctrl_we;
+    wire [7:0] i2c0_ctrl_wr_data;
+    wire       i2c0_ctrl_we;
 
-    reg  [7:0] i2c0_data_wr_data;
-    reg        i2c0_data_we;
+    wire [7:0] i2c0_data_wr_data;
+    wire       i2c0_data_we;
     wire [7:0] i2c0_data_rd_data;
 
-    reg  [7:0] i2c0_div_wr_data;
-    reg        i2c0_div_we;
+    wire [7:0] i2c0_div_wr_data;
+    wire       i2c0_div_we;
 
     wire [7:0] i2c0_status;
 
@@ -306,28 +306,61 @@ module tt_um_kluterirv_rv32e_core (
     );
 
     // ---------------------------------------------------------------------
-    // Peripheral automatic stall
+    // Peripheral bus / MMIO handler
     // ---------------------------------------------------------------------
-    //
-    // If the core writes to a slow peripheral while it is busy, the current
-    // instruction is held in S_EXEC and PC is not advanced.
 
-    wire [31:0] store_addr;
-    wire        store_is_sw;
-    wire        i2c0_busy;
+    wire [31:0] periph_store_addr;
+    wire [31:0] periph_load_addr;
+    wire [31:0] periph_addr;
+    wire        periph_store_en;
+    wire        periph_load_en;
+    wire [31:0] periph_rdata;
     wire        peripheral_store_stall;
 
-    assign store_addr  = rs1_val + imm_s;
-    assign store_is_sw = (opcode == 7'b0100011) && (funct3 == 3'b010);
-    assign i2c0_busy   = i2c0_status[0];
+    assign periph_store_addr = rs1_val + imm_s;
+    assign periph_load_addr  = rs1_val + imm_i;
 
-    assign peripheral_store_stall =
-        store_is_sw &&
-        (
-            ((store_addr == 32'h1000_0004) && uart0_tx_busy) ||
-            (((store_addr == 32'h1000_0010) ||
-              (store_addr == 32'h1000_001C)) && i2c0_busy)
-        );
+    assign periph_store_en = (state == S_EXEC) &&
+                             (opcode == 7'b0100011) &&
+                             (funct3 == 3'b010);
+
+    assign periph_load_en  = (state == S_EXEC) &&
+                             (opcode == 7'b0000011) &&
+                             (funct3 == 3'b010);
+
+    assign periph_addr = periph_store_en ? periph_store_addr : periph_load_addr;
+
+    irv_peripheral_bus u_peripheral_bus (
+        .load_en             (periph_load_en),
+        .store_en            (periph_store_en),
+        .addr                (periph_addr),
+        .wdata               (rs2_val),
+
+        .rdata               (periph_rdata),
+        .stall               (peripheral_store_stall),
+
+        .gpio0_we            (gpio0_we),
+        .gpio0_wdata         (gpio0_wdata),
+
+        .uart0_tx_busy       (uart0_tx_busy),
+        .uart0_rx_valid      (uart0_rx_valid),
+        .uart0_rx_data       (uart0_rx_data),
+        .uart0_tx_data       (uart0_tx_data),
+        .uart0_tx_start      (uart0_tx_start),
+        .uart0_rx_clear      (uart0_rx_clear),
+
+        .i2c0_status         (i2c0_status),
+        .i2c0_data_rd_data   (i2c0_data_rd_data),
+
+        .i2c0_ctrl_wr_data   (i2c0_ctrl_wr_data),
+        .i2c0_ctrl_we        (i2c0_ctrl_we),
+
+        .i2c0_data_wr_data   (i2c0_data_wr_data),
+        .i2c0_data_we        (i2c0_data_we),
+
+        .i2c0_div_wr_data    (i2c0_div_wr_data),
+        .i2c0_div_we         (i2c0_div_we)
+    );
 
     // ---------------------------------------------------------------------
     // Register file writeback generation
@@ -372,19 +405,8 @@ module tt_um_kluterirv_rv32e_core (
                 // LOAD: minimal memory-mapped peripheral reads
                 7'b0000011: begin
                     if ((funct3 == 3'b010) && (rd != 5'd0)) begin
-                        if ((rs1_val + imm_i) == 32'h1000_0008) begin
-                            rd_we    = 1'b1;
-                            rd_wdata = {30'd0, uart0_rx_valid, uart0_tx_busy};
-                        end else if ((rs1_val + imm_i) == 32'h1000_000C) begin
-                            rd_we    = 1'b1;
-                            rd_wdata = {24'd0, uart0_rx_data};
-                        end else if ((rs1_val + imm_i) == 32'h1000_0014) begin
-                            rd_we    = 1'b1;
-                            rd_wdata = {24'd0, i2c0_data_rd_data};
-                        end else if ((rs1_val + imm_i) == 32'h1000_0018) begin
-                            rd_we    = 1'b1;
-                            rd_wdata = {24'd0, i2c0_status};
-                        end
+                        rd_we    = 1'b1;
+                        rd_wdata = periph_rdata;
                     end
                 end
 
@@ -484,26 +506,9 @@ module tt_um_kluterirv_rv32e_core (
             instr_lo  <= 16'd0;
             instr_reg <= 32'd0;
             halted          <= 1'b0;
-            gpio0_we        <= 1'b0;
-            gpio0_wdata     <= 8'd0;
-            uart0_tx_data   <= 8'd0;
-            uart0_tx_start  <= 1'b0;
 
-            i2c0_ctrl_wr_data <= 8'd0;
-            i2c0_ctrl_we      <= 1'b0;
-            i2c0_data_wr_data <= 8'd0;
-            i2c0_data_we      <= 1'b0;
-            i2c0_div_wr_data  <= 8'd0;
-            i2c0_div_we       <= 1'b0;
-            uart0_rx_clear  <= 1'b0;
         end else begin
             // Default pulse value for UART0 TX.
-            uart0_tx_start <= 1'b0;
-            gpio0_we       <= 1'b0;
-            uart0_rx_clear <= 1'b0;
-            i2c0_ctrl_we <= 1'b0;
-            i2c0_data_we <= 1'b0;
-            i2c0_div_we  <= 1'b0;
 
             case (state)
 
@@ -550,39 +555,11 @@ module tt_um_kluterirv_rv32e_core (
                             // LOAD: minimal memory-mapped peripheral reads
                             7'b0000011: begin
                                 pc <= pc + 32'd4;
-
-                                if (funct3 == 3'b010) begin
-                                    if ((rs1_val + imm_i) == 32'h1000_000C) begin
-                                        // Reading UART0 RX data consumes the byte.
-                                        uart0_rx_clear <= 1'b1;
-                                    end
-                                end
                             end
 
-                            // STORE: SW to memory-mapped GPIO only
+                            // STORE: memory-mapped peripheral writes
                             7'b0100011: begin
                                 pc <= pc + 32'd4;
-
-                                if (funct3 == 3'b010) begin
-                                    if ((rs1_val + imm_s) == 32'h1000_0000) begin
-                                        gpio0_wdata <= rs2_val[7:0];
-                                        gpio0_we    <= 1'b1;
-                                    end else if ((rs1_val + imm_s) == 32'h1000_0004) begin
-                                        if (!uart0_tx_busy) begin
-                                            uart0_tx_data  <= rs2_val[7:0];
-                                            uart0_tx_start <= 1'b1;
-                                        end
-                                    end else if ((rs1_val + imm_s) == 32'h1000_0010) begin
-                                        i2c0_ctrl_wr_data <= rs2_val[7:0];
-                                        i2c0_ctrl_we      <= 1'b1;
-                                    end else if ((rs1_val + imm_s) == 32'h1000_0014) begin
-                                        i2c0_data_wr_data <= rs2_val[7:0];
-                                        i2c0_data_we      <= 1'b1;
-                                    end else if ((rs1_val + imm_s) == 32'h1000_001C) begin
-                                        i2c0_div_wr_data  <= rs2_val[7:0];
-                                        i2c0_div_we       <= 1'b1;
-                                    end
-                                end
                             end
 
                             // JAL: jump and link
