@@ -90,6 +90,7 @@ module irv_core (
     wire is_store;
     wire is_branch;
     wire is_jal;
+    wire is_jalr;
     wire is_ebreak;
 
     irv_decoder u_decoder (
@@ -115,12 +116,14 @@ module irv_core (
         .is_store  (is_store),
         .is_branch (is_branch),
         .is_jal    (is_jal),
+        .is_jalr   (is_jalr),
         .is_ebreak (is_ebreak)
     );
 
     wire unused_decoder_fields;
     assign unused_decoder_fields = is_lui | is_op_imm | is_op | is_load |
-                                   is_store | is_branch | is_jal | (|funct7);
+                                   is_store | is_branch | is_jal | is_jalr |
+                                   (|funct7);
 
     // ---------------------------------------------------------------------
     // Register file
@@ -239,14 +242,19 @@ module irv_core (
     wire        pc_we;
     wire        pc_halt_req;
 
+    wire [31:0] jalr_target;
+    assign jalr_target = rs1_val + imm_i;
+
     irv_pc_ctrl u_pc_ctrl (
         .pc           (pc),
 
         .imm_b        (imm_b),
         .imm_j        (imm_j),
+        .jalr_target  (jalr_target),
 
         .is_ebreak    (is_ebreak),
         .is_jal       (is_jal),
+        .is_jalr      (is_jalr),
         .is_branch    (is_branch),
         .branch_taken (branch_taken),
         .stall        (periph_stall),
@@ -366,6 +374,14 @@ module irv_core (
                 // JAL
                 7'b1101111: begin
                     if (rd != 5'd0) begin
+                        rd_we    = 1'b1;
+                        rd_wdata = pc + 32'd4;
+                    end
+                end
+
+                // JALR
+                7'b1100111: begin
+                    if ((funct3 == 3'b000) && (rd != 5'd0)) begin
                         rd_we    = 1'b1;
                         rd_wdata = pc + 32'd4;
                     end

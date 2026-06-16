@@ -156,6 +156,16 @@ def enc_jal(rd, offset):
     )
 
 
+def enc_jalr(rd, rs1, imm):
+    return (
+        ((imm & 0xFFF) << 20)
+        | ((rs1 & 0x1F) << 15)
+        | (0b000 << 12)
+        | ((rd & 0x1F) << 7)
+        | 0x67
+    )
+
+
 EBREAK = 0x00100073
 
 
@@ -374,6 +384,32 @@ async def test_project(dut):
         words=regfile_x8_program,
         expected_gpio=0x54,
         cycles=220,
+    )
+
+    # -------------------------------------------------------------------------
+    # Test 6: JALR link and indirect jump.
+    #
+    # x5 = 0x10
+    # JALR x1, 0(x5): x1 = 0x08 and PC jumps to 0x10.
+    # Instructions at 0x08 and 0x0C must be skipped.
+    # At 0x10: x4 = x1 + 0x66 = 0x6E.
+    # GPIO = 0x6E.
+    # -------------------------------------------------------------------------
+
+    jalr_program = [
+        enc_addi(5, 0, 0x10),       # PC 0x00: x5 = target 0x10
+        enc_jalr(1, 5, 0),          # PC 0x04: x1 = 0x08, jump to 0x10
+        enc_addi(4, 0, 0xEE),       # PC 0x08 skipped
+        enc_addi(4, 0, 0xEF),       # PC 0x0C skipped
+        enc_addi(4, 1, 0x66),       # PC 0x10: x4 = 0x6E
+    ] + write_gpio_program(4)
+
+    await run_program_and_check_gpio(
+        dut,
+        name="JALR link and indirect jump",
+        words=jalr_program,
+        expected_gpio=0x6E,
+        cycles=240,
     )
 
     dut._log.info("All core regression tests passed")

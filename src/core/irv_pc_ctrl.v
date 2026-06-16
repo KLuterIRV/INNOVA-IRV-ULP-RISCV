@@ -10,6 +10,7 @@
 //   - Sequential execution: PC + 4
 //   - Branch taken:        PC + imm_b
 //   - JAL:                 PC + imm_j
+//   - JALR:                (rs1 + imm_i) & ~1
 //   - EBREAK:              request halt
 //   - Peripheral stall:    hold PC
 //
@@ -23,9 +24,11 @@ module irv_pc_ctrl (
 
     input  wire [31:0] imm_b,
     input  wire [31:0] imm_j,
+    input  wire [31:0] jalr_target,
 
     input  wire        is_ebreak,
     input  wire        is_jal,
+    input  wire        is_jalr,
     input  wire        is_branch,
     input  wire        branch_taken,
     input  wire        stall,
@@ -45,6 +48,8 @@ module irv_pc_ctrl (
 
         if (is_jal) begin
             pc_next = pc + imm_j;
+        end else if (is_jalr) begin
+            pc_next = {jalr_target[31:1], 1'b0};
         end else if (is_branch && branch_taken) begin
             pc_next = pc + imm_b;
         end
