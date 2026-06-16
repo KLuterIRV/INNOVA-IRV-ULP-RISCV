@@ -77,6 +77,12 @@ module irv_peripheral_bus (
     wire i2c0_busy;
     assign i2c0_busy = i2c0_status[0];
 
+    // Upper write-data bits are intentionally unused for current 8-bit
+    // peripherals. They are kept in the bus interface for future 32-bit
+    // peripherals or wider MMIO registers.
+    wire unused_wdata_upper;
+    assign unused_wdata_upper = |wdata[31:8];
+
     // ---------------------------------------------------------------------
     // Automatic stall generation
     // ---------------------------------------------------------------------
