@@ -153,28 +153,65 @@ module irv_core (
 
     localparam [3:0]
         IRV_ALU_ADD = 4'd0,
+        IRV_ALU_SUB = 4'd1,
         IRV_ALU_AND = 4'd2,
         IRV_ALU_OR  = 4'd3,
         IRV_ALU_XOR = 4'd4;
 
     reg  [3:0]  alu_op;
+    wire [31:0] alu_b;
     wire [31:0] alu_y;
     wire        alu_eq_unused;
 
+    // OP-IMM uses the sign-extended immediate.
+    // R-type OP uses rs2.
+    assign alu_b = (opcode == 7'b0110011) ? rs2_val : imm_i;
+
     always @(*) begin
-        case (funct3)
-            3'b000: alu_op = IRV_ALU_ADD; // ADDI
-            3'b100: alu_op = IRV_ALU_XOR; // XORI
-            3'b110: alu_op = IRV_ALU_OR;  // ORI
-            3'b111: alu_op = IRV_ALU_AND; // ANDI
-            default: alu_op = IRV_ALU_ADD;
+        alu_op = IRV_ALU_ADD;
+
+        case (opcode)
+
+            // OP-IMM: ADDI / XORI / ORI / ANDI
+            7'b0010011: begin
+                case (funct3)
+                    3'b000: alu_op = IRV_ALU_ADD; // ADDI
+                    3'b100: alu_op = IRV_ALU_XOR; // XORI
+                    3'b110: alu_op = IRV_ALU_OR;  // ORI
+                    3'b111: alu_op = IRV_ALU_AND; // ANDI
+                    default: alu_op = IRV_ALU_ADD;
+                endcase
+            end
+
+            // OP: ADD / SUB / XOR / OR / AND
+            7'b0110011: begin
+                case (funct3)
+                    3'b000: begin
+                        if (funct7 == 7'b0100000) begin
+                            alu_op = IRV_ALU_SUB; // SUB
+                        end else begin
+                            alu_op = IRV_ALU_ADD; // ADD
+                        end
+                    end
+
+                    3'b100: alu_op = IRV_ALU_XOR; // XOR
+                    3'b110: alu_op = IRV_ALU_OR;  // OR
+                    3'b111: alu_op = IRV_ALU_AND; // AND
+                    default: alu_op = IRV_ALU_ADD;
+                endcase
+            end
+
+            default: begin
+                alu_op = IRV_ALU_ADD;
+            end
+
         endcase
     end
 
     irv_alu u_alu (
         .alu_op (alu_op),
         .a      (rs1_val),
-        .b      (imm_i),
+        .b      (alu_b),
         .y      (alu_y),
         .eq     (alu_eq_unused)
     );
@@ -298,6 +335,21 @@ module irv_core (
                          (funct3 == 3'b100) ||
                          (funct3 == 3'b110) ||
                          (funct3 == 3'b111))) begin
+                        rd_we    = 1'b1;
+                        rd_wdata = alu_y;
+                    end
+                end
+
+                // OP: ADD / SUB / XOR / OR / AND
+                7'b0110011: begin
+                    if ((rd != 5'd0) &&
+                        (
+                            ((funct3 == 3'b000) &&
+                             ((funct7 == 7'b0000000) || (funct7 == 7'b0100000))) ||
+                            ((funct3 == 3'b100) && (funct7 == 7'b0000000)) ||
+                            ((funct3 == 3'b110) && (funct7 == 7'b0000000)) ||
+                            ((funct3 == 3'b111) && (funct7 == 7'b0000000))
+                        )) begin
                         rd_we    = 1'b1;
                         rd_wdata = alu_y;
                     end
