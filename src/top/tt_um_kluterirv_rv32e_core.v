@@ -396,19 +396,59 @@ module tt_um_kluterirv_rv32e_core (
                                 endcase
                             end
 
-                            // OP-IMM: ADDI only
+                            // OP-IMM: ADDI / XORI / ORI / ANDI
                             7'b0010011: begin
                                 pc <= pc + 32'd4;
 
-                                if (funct3 == 3'b000) begin
-                                    case (rd)
-                                        5'd1: x1 <= rs1_val + imm_i;
-                                        5'd2: x2 <= rs1_val + imm_i;
-                                        5'd3: x3 <= rs1_val + imm_i;
-                                        5'd4: x4 <= rs1_val + imm_i;
-                                        default: begin end
-                                    endcase
-                                end
+                                case (funct3)
+
+                                    // ADDI
+                                    3'b000: begin
+                                        case (rd)
+                                            5'd1: x1 <= rs1_val + imm_i;
+                                            5'd2: x2 <= rs1_val + imm_i;
+                                            5'd3: x3 <= rs1_val + imm_i;
+                                            5'd4: x4 <= rs1_val + imm_i;
+                                            default: begin end
+                                        endcase
+                                    end
+
+                                    // XORI
+                                    3'b100: begin
+                                        case (rd)
+                                            5'd1: x1 <= rs1_val ^ imm_i;
+                                            5'd2: x2 <= rs1_val ^ imm_i;
+                                            5'd3: x3 <= rs1_val ^ imm_i;
+                                            5'd4: x4 <= rs1_val ^ imm_i;
+                                            default: begin end
+                                        endcase
+                                    end
+
+                                    // ORI
+                                    3'b110: begin
+                                        case (rd)
+                                            5'd1: x1 <= rs1_val | imm_i;
+                                            5'd2: x2 <= rs1_val | imm_i;
+                                            5'd3: x3 <= rs1_val | imm_i;
+                                            5'd4: x4 <= rs1_val | imm_i;
+                                            default: begin end
+                                        endcase
+                                    end
+
+                                    // ANDI
+                                    3'b111: begin
+                                        case (rd)
+                                            5'd1: x1 <= rs1_val & imm_i;
+                                            5'd2: x2 <= rs1_val & imm_i;
+                                            5'd3: x3 <= rs1_val & imm_i;
+                                            5'd4: x4 <= rs1_val & imm_i;
+                                            default: begin end
+                                        endcase
+                                    end
+
+                                    default: begin end
+
+                                endcase
                             end
 
                             // LOAD: minimal memory-mapped peripheral reads
