@@ -20,18 +20,6 @@ def enc_addi(rd, rs1, imm):
     return ((imm & 0xFFF) << 20) | ((rs1 & 0x1F) << 15) | (0 << 12) | ((rd & 0x1F) << 7) | 0x13
 
 
-def enc_xori(rd, rs1, imm):
-    return ((imm & 0xFFF) << 20) | ((rs1 & 0x1F) << 15) | (4 << 12) | ((rd & 0x1F) << 7) | 0x13
-
-
-def enc_ori(rd, rs1, imm):
-    return ((imm & 0xFFF) << 20) | ((rs1 & 0x1F) << 15) | (6 << 12) | ((rd & 0x1F) << 7) | 0x13
-
-
-def enc_andi(rd, rs1, imm):
-    return ((imm & 0xFFF) << 20) | ((rs1 & 0x1F) << 15) | (7 << 12) | ((rd & 0x1F) << 7) | 0x13
-
-
 def enc_sw(rs2, rs1, imm):
     imm12 = imm & 0xFFF
     imm_11_5 = (imm12 >> 5) & 0x7F
@@ -47,6 +35,26 @@ def enc_sw(rs2, rs1, imm):
     )
 
 
+def enc_jal(rd, offset):
+    # RISC-V JAL immediate encoding.
+    # offset is signed byte offset, must be 2-byte aligned.
+    imm = offset & 0x1FFFFF
+
+    bit20 = (imm >> 20) & 0x1
+    bits10_1 = (imm >> 1) & 0x3FF
+    bit11 = (imm >> 11) & 0x1
+    bits19_12 = (imm >> 12) & 0xFF
+
+    return (
+        (bit20 << 31)
+        | (bits19_12 << 12)
+        | (bit11 << 20)
+        | (bits10_1 << 21)
+        | ((rd & 0x1F) << 7)
+        | 0x6F
+    )
+
+
 async def write_byte(dut, addr, data):
     dut.ui_in.value = ((addr & 0x7F) << 1) | 1
     dut.uio_in.value = data & 0xFF
@@ -59,7 +67,7 @@ async def write_byte(dut, addr, data):
 
 @cocotb.test()
 async def test_project(dut):
-    dut._log.info("Start RV32E OP-IMM logic test")
+    dut._log.info("Start RV32E JAL test")
 
     clock = Clock(dut.clk, 10, unit="us")
     cocotb.start_soon(clock.start())
@@ -72,10 +80,10 @@ async def test_project(dut):
     await ClockCycles(dut.clk, 10)
 
     words = [
-        enc_addi(1, 0, 0x55),      # x1 = 0x55
-        enc_ori(3, 1, 0x0A),       # x3 = 0x55 | 0x0A = 0x5F
-        enc_xori(3, 3, 0x0F),      # x3 = 0x5F ^ 0x0F = 0x50
-        enc_andi(4, 3, 0x0F0),     # x4 = 0x50 & 0xF0 = 0x50
+        enc_addi(4, 0, 0x11),      # PC 0x00: x4 = 0x11
+        enc_jal(1, 8),             # PC 0x04: x1 = 0x08, jump to PC 0x0C
+        enc_addi(4, 0, 0x0FF),     # PC 0x08: must be skipped
+        enc_addi(4, 1, 0x4D),      # PC 0x0C: x4 = x1 + 0x4D = 0x55
 
         enc_lui(2, 0x10000),       # x2 = 0x1000_0000
         enc_sw(4, 2, 0x00),        # GPIO output = x4
@@ -96,12 +104,12 @@ async def test_project(dut):
 
     await ClockCycles(dut.clk, 5)
 
-    dut._log.info("Release reset and execute OP-IMM logic program")
+    dut._log.info("Release reset and execute JAL program")
     dut.rst_n.value = 1
 
-    await ClockCycles(dut.clk, 100)
+    await ClockCycles(dut.clk, 120)
 
     observed = int(dut.uo_out.value)
     dut._log.info(f"uo_out = 0x{observed:02x}")
 
-    assert observed == 0x50, f"Expected uo_out=0x50, got 0x{observed:02x}"
+    assert observed == 0x55, f"Expected uo_out=0x55, got 0x{observed:02x}"

@@ -81,6 +81,7 @@ module tt_um_kluterirv_rv32e_core (
     wire [31:0] imm_s;
     wire [31:0] imm_u;
     wire [31:0] imm_b;
+    wire [31:0] imm_j;
 
     assign imm_i = {{20{instr_reg[31]}}, instr_reg[31:20]};
     assign imm_s = {{20{instr_reg[31]}}, instr_reg[31:25], instr_reg[11:7]};
@@ -94,6 +95,17 @@ module tt_um_kluterirv_rv32e_core (
         instr_reg[7],
         instr_reg[30:25],
         instr_reg[11:8],
+        1'b0
+    };
+
+    // J-type immediate for JAL:
+    // imm[20|10:1|11|19:12|0] = instr[31|30:21|20|19:12|0]
+    assign imm_j = {
+        {11{instr_reg[31]}},
+        instr_reg[31],
+        instr_reg[19:12],
+        instr_reg[20],
+        instr_reg[30:21],
         1'b0
     };
 
@@ -524,6 +536,19 @@ module tt_um_kluterirv_rv32e_core (
                                         i2c0_div_we       <= 1'b1;
                                     end
                                 end
+                            end
+
+                            // JAL: jump and link
+                            7'b1101111: begin
+                                case (rd)
+                                    5'd1: x1 <= pc + 32'd4;
+                                    5'd2: x2 <= pc + 32'd4;
+                                    5'd3: x3 <= pc + 32'd4;
+                                    5'd4: x4 <= pc + 32'd4;
+                                    default: begin end
+                                endcase
+
+                                pc <= pc + imm_j;
                             end
 
                             // BRANCH: BEQ / BNE
