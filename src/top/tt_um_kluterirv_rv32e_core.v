@@ -52,8 +52,12 @@ module tt_um_kluterirv_rv32e_core (
     reg [15:0] instr_lo;
     reg [31:0] instr_reg;
 
-    reg [7:0] out_reg;
     reg       halted;
+
+    // GPIO0 peripheral interface.
+    reg        gpio0_we;
+    reg  [7:0] gpio0_wdata;
+    wire [7:0] gpio0_out;
 
     // Register file writeback interface.
     reg        rd_we;
@@ -189,6 +193,21 @@ module tt_um_kluterirv_rv32e_core (
             ((funct3 == 3'b000) && branch_eq)  || // BEQ
             ((funct3 == 3'b001) && !branch_eq)    // BNE
         );
+
+    // ---------------------------------------------------------------------
+    // GPIO0 peripheral
+    // ---------------------------------------------------------------------
+    //
+    // Memory map:
+    //   0x1000_0000 -> GPIO0 output register
+
+    gpio0 u_gpio0 (
+        .clk      (clk),
+        .rst      (rst),
+        .we       (gpio0_we),
+        .wdata    (gpio0_wdata),
+        .gpio_out (gpio0_out)
+    );
 
     // ---------------------------------------------------------------------
     // UART0 peripheral
@@ -464,8 +483,9 @@ module tt_um_kluterirv_rv32e_core (
             pc        <= 32'd0;
             instr_lo  <= 16'd0;
             instr_reg <= 32'd0;
-            out_reg         <= 8'd0;
             halted          <= 1'b0;
+            gpio0_we        <= 1'b0;
+            gpio0_wdata     <= 8'd0;
             uart0_tx_data   <= 8'd0;
             uart0_tx_start  <= 1'b0;
 
@@ -479,6 +499,7 @@ module tt_um_kluterirv_rv32e_core (
         end else begin
             // Default pulse value for UART0 TX.
             uart0_tx_start <= 1'b0;
+            gpio0_we       <= 1'b0;
             uart0_rx_clear <= 1'b0;
             i2c0_ctrl_we <= 1'b0;
             i2c0_data_we <= 1'b0;
@@ -544,7 +565,8 @@ module tt_um_kluterirv_rv32e_core (
 
                                 if (funct3 == 3'b010) begin
                                     if ((rs1_val + imm_s) == 32'h1000_0000) begin
-                                        out_reg <= rs2_val[7:0];
+                                        gpio0_wdata <= rs2_val[7:0];
+                                        gpio0_we    <= 1'b1;
                                     end else if ((rs1_val + imm_s) == 32'h1000_0004) begin
                                         if (!uart0_tx_busy) begin
                                             uart0_tx_data  <= rs2_val[7:0];
@@ -609,7 +631,7 @@ module tt_um_kluterirv_rv32e_core (
 
     assign uo_out = ena
         ? (uart0_rx_debug_mode ? (uart0_rx_valid ? uart0_rx_data : 8'd0)
-           : (boot_mode ? boot_debug_byte : out_reg))
+           : (boot_mode ? boot_debug_byte : gpio0_out))
         : 8'd0;
 
     assign uio_out = {4'd0, i2c0_sda_out, i2c0_scl_out, 1'b0, uart0_tx};
