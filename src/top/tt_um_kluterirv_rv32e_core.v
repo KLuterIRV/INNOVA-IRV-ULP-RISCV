@@ -190,6 +190,32 @@ module tt_um_kluterirv_rv32e_core (
         );
 
     // ---------------------------------------------------------------------
+    // Program counter control
+    // ---------------------------------------------------------------------
+
+    wire [31:0] pc_next;
+    wire        pc_we;
+    wire        pc_halt_req;
+
+    irv_pc_ctrl u_pc_ctrl (
+        .pc           (pc),
+
+        .imm_b        (imm_b),
+        .imm_j        (imm_j),
+
+        .is_ebreak    (is_ebreak),
+        .is_jal       (is_jal),
+        .is_branch    (is_branch),
+        .branch_taken (branch_taken),
+        .stall        (peripheral_store_stall),
+
+        .pc_next      (pc_next),
+        .pc_we        (pc_we),
+        .halt_req     (pc_halt_req)
+    );
+
+
+    // ---------------------------------------------------------------------
     // GPIO0 peripheral
     // ---------------------------------------------------------------------
     //
@@ -503,54 +529,48 @@ module tt_um_kluterirv_rv32e_core (
                 end
 
                 S_EXEC: begin
-                    if (is_ebreak) begin
+                    if (pc_halt_req) begin
                         halted <= 1'b1;
                         state  <= S_HALT;
-                    end else if (peripheral_store_stall) begin
+                    end else if (!pc_we) begin
                         // Wait here until the selected peripheral is ready.
                         // PC is not advanced, so the same SW instruction is retried.
                         state <= S_EXEC;
                     end else begin
 
+                                                pc <= pc_next;
+
                         case (opcode)
 
                             // LUI
                             7'b0110111: begin
-                                pc <= pc + 32'd4;
                             end
 
                             // OP-IMM: ADDI / XORI / ORI / ANDI
                             7'b0010011: begin
-                                pc <= pc + 32'd4;
                             end
 
                             // LOAD: minimal memory-mapped peripheral reads
                             7'b0000011: begin
-                                pc <= pc + 32'd4;
                             end
 
                             // STORE: memory-mapped peripheral writes
                             7'b0100011: begin
-                                pc <= pc + 32'd4;
                             end
 
                             // JAL: jump and link
                             7'b1101111: begin
-                                pc <= pc + imm_j;
                             end
 
                             // BRANCH: BEQ / BNE
                             7'b1100011: begin
                                 if (branch_taken) begin
-                                    pc <= pc + imm_b;
                                 end else begin
-                                    pc <= pc + 32'd4;
-                                end
+                                    end
                             end
 
                             default: begin
                                 // Unsupported instruction = NOP.
-                                pc <= pc + 32'd4;
                             end
 
                         endcase
