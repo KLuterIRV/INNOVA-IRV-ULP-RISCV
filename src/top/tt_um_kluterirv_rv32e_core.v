@@ -64,17 +64,12 @@ module tt_um_kluterirv_rv32e_core (
     // Decode helpers
     // ---------------------------------------------------------------------
 
-    wire [6:0] opcode;
-    wire [4:0] rd;
-    wire [2:0] funct3;
-    wire [4:0] rs1;
-    wire [4:0] rs2;
-
-    assign opcode = instr_reg[6:0];
-    assign rd     = instr_reg[11:7];
-    assign funct3 = instr_reg[14:12];
-    assign rs1    = instr_reg[19:15];
-    assign rs2    = instr_reg[24:20];
+    wire [6:0]  opcode;
+    wire [4:0]  rd;
+    wire [2:0]  funct3;
+    wire [6:0]  funct7;
+    wire [4:0]  rs1;
+    wire [4:0]  rs2;
 
     wire [31:0] imm_i;
     wire [31:0] imm_s;
@@ -82,31 +77,47 @@ module tt_um_kluterirv_rv32e_core (
     wire [31:0] imm_b;
     wire [31:0] imm_j;
 
-    assign imm_i = {{20{instr_reg[31]}}, instr_reg[31:20]};
-    assign imm_s = {{20{instr_reg[31]}}, instr_reg[31:25], instr_reg[11:7]};
-    assign imm_u = {instr_reg[31:12], 12'b0};
+    wire is_lui;
+    wire is_op_imm;
+    wire is_op;
+    wire is_load;
+    wire is_store;
+    wire is_branch;
+    wire is_jal;
+    wire is_ebreak;
 
-    // B-type immediate:
-    // imm[12|10:5|4:1|11|0] = instr[31|30:25|11:8|7|0]
-    assign imm_b = {
-        {19{instr_reg[31]}},
-        instr_reg[31],
-        instr_reg[7],
-        instr_reg[30:25],
-        instr_reg[11:8],
-        1'b0
-    };
+    irv_decoder u_decoder (
+        .instr     (instr_reg),
 
-    // J-type immediate for JAL:
-    // imm[20|10:1|11|19:12|0] = instr[31|30:21|20|19:12|0]
-    assign imm_j = {
-        {11{instr_reg[31]}},
-        instr_reg[31],
-        instr_reg[19:12],
-        instr_reg[20],
-        instr_reg[30:21],
-        1'b0
-    };
+        .opcode    (opcode),
+        .rd        (rd),
+        .funct3    (funct3),
+        .funct7    (funct7),
+        .rs1       (rs1),
+        .rs2       (rs2),
+
+        .imm_i     (imm_i),
+        .imm_s     (imm_s),
+        .imm_b     (imm_b),
+        .imm_u     (imm_u),
+        .imm_j     (imm_j),
+
+        .is_lui    (is_lui),
+        .is_op_imm (is_op_imm),
+        .is_op     (is_op),
+        .is_load   (is_load),
+        .is_store  (is_store),
+        .is_branch (is_branch),
+        .is_jal    (is_jal),
+        .is_ebreak (is_ebreak)
+    );
+
+    // Some decoded fields are reserved for the next core steps.
+    // They are intentionally exposed now to make R-type and interrupt work
+    // easier to add later.
+    wire unused_decoder_fields;
+    assign unused_decoder_fields = is_lui | is_op_imm | is_op | is_load |
+                                   is_store | is_branch | is_jal | funct7[0];
 
     wire [31:0] rs1_val;
     wire [31:0] rs2_val;
@@ -494,7 +505,7 @@ module tt_um_kluterirv_rv32e_core (
                 end
 
                 S_EXEC: begin
-                    if (instr_reg == 32'h0010_0073) begin
+                    if (is_ebreak) begin
                         halted <= 1'b1;
                         state  <= S_HALT;
                     end else if (peripheral_store_stall) begin
