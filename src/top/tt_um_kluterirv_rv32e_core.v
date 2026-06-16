@@ -137,13 +137,13 @@ module tt_um_kluterirv_rv32e_core (
 
     localparam [3:0]
         IRV_ALU_ADD = 4'd0,
-        IRV_ALU_SUB = 4'd1,
         IRV_ALU_AND = 4'd2,
         IRV_ALU_OR  = 4'd3,
         IRV_ALU_XOR = 4'd4;
 
     reg  [3:0]  alu_op;
     wire [31:0] alu_y;
+    wire        alu_eq_unused;
 
     always @(*) begin
         case (funct3)
@@ -160,8 +160,12 @@ module tt_um_kluterirv_rv32e_core (
         .a      (rs1_val),
         .b      (imm_i),
         .y      (alu_y),
-        .eq     ()
+        .eq     (alu_eq_unused)
     );
+
+    // Reserved for future branch/compare integration.
+    wire unused_alu_eq_sink;
+    assign unused_alu_eq_sink = alu_eq_unused;
 
     wire branch_eq;
     wire branch_taken;
