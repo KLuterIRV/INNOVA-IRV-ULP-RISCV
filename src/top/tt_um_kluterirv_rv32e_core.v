@@ -125,6 +125,44 @@ module tt_um_kluterirv_rv32e_core (
         .rd_wdata (rd_wdata)
     );
 
+    // ---------------------------------------------------------------------
+    // ALU
+    // ---------------------------------------------------------------------
+    //
+    // The ALU is currently used for OP-IMM instructions:
+    //   ADDI, XORI, ORI, ANDI.
+    //
+    // In the next step it will also be used for R-type operations:
+    //   ADD, SUB, AND, OR, XOR.
+
+    localparam [3:0]
+        IRV_ALU_ADD = 4'd0,
+        IRV_ALU_SUB = 4'd1,
+        IRV_ALU_AND = 4'd2,
+        IRV_ALU_OR  = 4'd3,
+        IRV_ALU_XOR = 4'd4;
+
+    reg  [3:0]  alu_op;
+    wire [31:0] alu_y;
+
+    always @(*) begin
+        case (funct3)
+            3'b000: alu_op = IRV_ALU_ADD; // ADDI
+            3'b100: alu_op = IRV_ALU_XOR; // XORI
+            3'b110: alu_op = IRV_ALU_OR;  // ORI
+            3'b111: alu_op = IRV_ALU_AND; // ANDI
+            default: alu_op = IRV_ALU_ADD;
+        endcase
+    end
+
+    irv_alu u_alu (
+        .alu_op (alu_op),
+        .a      (rs1_val),
+        .b      (imm_i),
+        .y      (alu_y),
+        .eq     ()
+    );
+
     wire branch_eq;
     wire branch_taken;
 
@@ -287,33 +325,13 @@ module tt_um_kluterirv_rv32e_core (
 
                 // OP-IMM: ADDI / XORI / ORI / ANDI
                 7'b0010011: begin
-                    if (rd != 5'd0) begin
-                        case (funct3)
-                            3'b000: begin
-                                rd_we    = 1'b1;
-                                rd_wdata = rs1_val + imm_i;
-                            end
-
-                            3'b100: begin
-                                rd_we    = 1'b1;
-                                rd_wdata = rs1_val ^ imm_i;
-                            end
-
-                            3'b110: begin
-                                rd_we    = 1'b1;
-                                rd_wdata = rs1_val | imm_i;
-                            end
-
-                            3'b111: begin
-                                rd_we    = 1'b1;
-                                rd_wdata = rs1_val & imm_i;
-                            end
-
-                            default: begin
-                                rd_we    = 1'b0;
-                                rd_wdata = 32'd0;
-                            end
-                        endcase
+                    if ((rd != 5'd0) &&
+                        ((funct3 == 3'b000) ||
+                         (funct3 == 3'b100) ||
+                         (funct3 == 3'b110) ||
+                         (funct3 == 3'b111))) begin
+                        rd_we    = 1'b1;
+                        rd_wdata = alu_y;
                     end
                 end
 
