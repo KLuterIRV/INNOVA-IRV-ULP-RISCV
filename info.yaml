@@ -18,6 +18,8 @@ project:
   # Don't forget to also update `PROJECT_SOURCES` in test/Makefile.
   source_files:
   - "top/tt_um_kluterirv_rv32e_core.v"
+  - "core/irv_regfile.v"
+  - "core/irv_alu.v"
   - "peripherals/uart0.v"
   - "peripherals/i2c0.v"
 
