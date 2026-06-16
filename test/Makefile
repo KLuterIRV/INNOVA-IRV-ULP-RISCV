@@ -9,6 +9,7 @@ SRC_DIR = $(PWD)/../src
 
 PROJECT_SOURCES = \
 	top/tt_um_kluterirv_rv32e_core.v \
+	core/irv_core.v \
 	core/irv_regfile.v \
 	core/irv_alu.v \
 	core/irv_decoder.v \
