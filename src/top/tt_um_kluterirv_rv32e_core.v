@@ -45,8 +45,7 @@ module tt_um_kluterirv_rv32e_core (
     reg [2:0] state;
 
     reg [31:0] pc;
-    reg [15:0] instr_lo;
-    reg [31:0] instr_reg;
+    wire [31:0] instr_reg;
 
     reg       halted;
 
@@ -424,31 +423,39 @@ module tt_um_kluterirv_rv32e_core (
     end
 
     // ---------------------------------------------------------------------
-    // Unified 64x16 SRAM memory
+    // Unified 64x16 SRAM memory + fetch helper
     // ---------------------------------------------------------------------
     //
-    // The physical SRAM implementation is wrapped in sram64x16.
-    // The CPU fetch path still requests 16-bit halfwords. Each RV32
-    // instruction is fetched using two sequential halfword reads.
+    // sram64x16 wraps the two physical 64x8 SRAM macros.
+    // irv_fetch handles halfword address sequencing and instruction assembly.
 
-    wire [5:0] pc_half_addr;
-    wire [5:0] pc_half_addr_hi;
-
-    assign pc_half_addr    = pc[6:1];
-    assign pc_half_addr_hi = pc[6:1] + 6'd1;
-
-    reg [5:0] run_sram_addr;
-
-    always @(*) begin
-        case (state)
-            S_ADDR_LO: run_sram_addr = pc_half_addr;
-            S_CAP_LO:  run_sram_addr = pc_half_addr_hi;
-            default:   run_sram_addr = pc_half_addr;
-        endcase
-    end
-
+    wire [5:0]  run_sram_addr;
     wire [15:0] sram_rhalf;
     wire [7:0]  boot_debug_byte;
+
+    wire fetch_addr_lo;
+    wire fetch_cap_lo;
+    wire fetch_cap_hi;
+
+    assign fetch_addr_lo = (state == S_ADDR_LO);
+    assign fetch_cap_lo  = (state == S_CAP_LO);
+    assign fetch_cap_hi  = (state == S_CAP_HI);
+
+    irv_fetch u_fetch (
+        .clk           (clk),
+        .rst           (rst),
+
+        .pc            (pc),
+
+        .fetch_addr_lo (fetch_addr_lo),
+        .fetch_cap_lo  (fetch_cap_lo),
+        .fetch_cap_hi  (fetch_cap_hi),
+
+        .sram_rhalf    (sram_rhalf),
+
+        .sram_addr     (run_sram_addr),
+        .instr         (instr_reg)
+    );
 
     sram64x16 u_sram64x16 (
         .clk             (clk),
@@ -472,8 +479,6 @@ module tt_um_kluterirv_rv32e_core (
         if (rst) begin
             state     <= S_ADDR_LO;
             pc        <= 32'd0;
-            instr_lo  <= 16'd0;
-            instr_reg <= 32'd0;
             halted          <= 1'b0;
 
         end else begin
@@ -490,13 +495,11 @@ module tt_um_kluterirv_rv32e_core (
                 end
 
                 S_CAP_LO: begin
-                    instr_lo <= sram_rhalf;
-                    state    <= S_CAP_HI;
+                    state <= S_CAP_HI;
                 end
 
                 S_CAP_HI: begin
-                    instr_reg <= {sram_rhalf, instr_lo};
-                    state     <= S_EXEC;
+                    state <= S_EXEC;
                 end
 
                 S_EXEC: begin

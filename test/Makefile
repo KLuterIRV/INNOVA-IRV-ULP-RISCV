@@ -12,6 +12,7 @@ PROJECT_SOURCES = \
 	core/irv_regfile.v \
 	core/irv_alu.v \
 	core/irv_decoder.v \
+	core/irv_fetch.v \
 	soc/irv_peripheral_bus.v \
 	mem/sram64x16.v \
 	peripherals/gpio0.v \
