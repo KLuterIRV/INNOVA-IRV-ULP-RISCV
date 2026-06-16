@@ -55,11 +55,10 @@ module tt_um_kluterirv_rv32e_core (
     reg [7:0] out_reg;
     reg       halted;
 
-    // Minimal physical registers.
-    reg [31:0] x1;
-    reg [31:0] x2;
-    reg [31:0] x3;
-    reg [31:0] x4;
+    // Register file writeback interface.
+    reg        rd_we;
+    reg [4:0]  rd_waddr;
+    reg [31:0] rd_wdata;
 
     // ---------------------------------------------------------------------
     // Decode helpers
@@ -109,25 +108,22 @@ module tt_um_kluterirv_rv32e_core (
         1'b0
     };
 
-    function [31:0] read_reg;
-        input [4:0] r;
-        begin
-            case (r)
-                5'd0: read_reg = 32'd0;
-                5'd1: read_reg = x1;
-                5'd2: read_reg = x2;
-                5'd3: read_reg = x3;
-                5'd4: read_reg = x4;
-                default: read_reg = 32'd0;
-            endcase
-        end
-    endfunction
-
     wire [31:0] rs1_val;
     wire [31:0] rs2_val;
 
-    assign rs1_val = read_reg(rs1);
-    assign rs2_val = read_reg(rs2);
+    irv_regfile u_regfile (
+        .clk      (clk),
+        .rst      (rst),
+
+        .rs1      (rs1),
+        .rs2      (rs2),
+        .rs1_val  (rs1_val),
+        .rs2_val  (rs2_val),
+
+        .rd_we    (rd_we),
+        .rd       (rd_waddr),
+        .rd_wdata (rd_wdata)
+    );
 
     wire branch_eq;
     wire branch_taken;
@@ -262,6 +258,102 @@ module tt_um_kluterirv_rv32e_core (
         );
 
     // ---------------------------------------------------------------------
+    // Register file writeback generation
+    // ---------------------------------------------------------------------
+    //
+    // Writeback is generated combinationally from the current instruction.
+    // The regfile captures rd_wdata on the same clock edge used by S_EXEC.
+    //
+    // This avoids one-cycle-late writes and keeps the execute FSM simple.
+
+    always @(*) begin
+        rd_we    = 1'b0;
+        rd_waddr = rd;
+        rd_wdata = 32'd0;
+
+        if ((state == S_EXEC) &&
+            (instr_reg != 32'h0010_0073) &&
+            !peripheral_store_stall) begin
+
+            case (opcode)
+
+                // LUI
+                7'b0110111: begin
+                    if (rd != 5'd0) begin
+                        rd_we    = 1'b1;
+                        rd_wdata = imm_u;
+                    end
+                end
+
+                // OP-IMM: ADDI / XORI / ORI / ANDI
+                7'b0010011: begin
+                    if (rd != 5'd0) begin
+                        case (funct3)
+                            3'b000: begin
+                                rd_we    = 1'b1;
+                                rd_wdata = rs1_val + imm_i;
+                            end
+
+                            3'b100: begin
+                                rd_we    = 1'b1;
+                                rd_wdata = rs1_val ^ imm_i;
+                            end
+
+                            3'b110: begin
+                                rd_we    = 1'b1;
+                                rd_wdata = rs1_val | imm_i;
+                            end
+
+                            3'b111: begin
+                                rd_we    = 1'b1;
+                                rd_wdata = rs1_val & imm_i;
+                            end
+
+                            default: begin
+                                rd_we    = 1'b0;
+                                rd_wdata = 32'd0;
+                            end
+                        endcase
+                    end
+                end
+
+                // LOAD: minimal memory-mapped peripheral reads
+                7'b0000011: begin
+                    if ((funct3 == 3'b010) && (rd != 5'd0)) begin
+                        if ((rs1_val + imm_i) == 32'h1000_0008) begin
+                            rd_we    = 1'b1;
+                            rd_wdata = {30'd0, uart0_rx_valid, uart0_tx_busy};
+                        end else if ((rs1_val + imm_i) == 32'h1000_000C) begin
+                            rd_we    = 1'b1;
+                            rd_wdata = {24'd0, uart0_rx_data};
+                        end else if ((rs1_val + imm_i) == 32'h1000_0014) begin
+                            rd_we    = 1'b1;
+                            rd_wdata = {24'd0, i2c0_data_rd_data};
+                        end else if ((rs1_val + imm_i) == 32'h1000_0018) begin
+                            rd_we    = 1'b1;
+                            rd_wdata = {24'd0, i2c0_status};
+                        end
+                    end
+                end
+
+                // JAL
+                7'b1101111: begin
+                    if (rd != 5'd0) begin
+                        rd_we    = 1'b1;
+                        rd_wdata = pc + 32'd4;
+                    end
+                end
+
+                default: begin
+                    rd_we    = 1'b0;
+                    rd_wdata = 32'd0;
+                end
+
+            endcase
+        end
+    end
+
+    // ---------------------------------------------------------------------
     // Unified 64x16 SRAM memory
     // ---------------------------------------------------------------------
 
@@ -351,10 +443,6 @@ module tt_um_kluterirv_rv32e_core (
             i2c0_div_wr_data  <= 8'd0;
             i2c0_div_we       <= 1'b0;
             uart0_rx_clear  <= 1'b0;
-            x1        <= 32'd0;
-            x2        <= 32'd0;
-            x3        <= 32'd0;
-            x4        <= 32'd0;
         end else begin
             // Default pulse value for UART0 TX.
             uart0_tx_start <= 1'b0;
@@ -398,69 +486,11 @@ module tt_um_kluterirv_rv32e_core (
                             // LUI
                             7'b0110111: begin
                                 pc <= pc + 32'd4;
-
-                                case (rd)
-                                    5'd1: x1 <= imm_u;
-                                    5'd2: x2 <= imm_u;
-                                    5'd3: x3 <= imm_u;
-                                    5'd4: x4 <= imm_u;
-                                    default: begin end
-                                endcase
                             end
 
                             // OP-IMM: ADDI / XORI / ORI / ANDI
                             7'b0010011: begin
                                 pc <= pc + 32'd4;
-
-                                case (funct3)
-
-                                    // ADDI
-                                    3'b000: begin
-                                        case (rd)
-                                            5'd1: x1 <= rs1_val + imm_i;
-                                            5'd2: x2 <= rs1_val + imm_i;
-                                            5'd3: x3 <= rs1_val + imm_i;
-                                            5'd4: x4 <= rs1_val + imm_i;
-                                            default: begin end
-                                        endcase
-                                    end
-
-                                    // XORI
-                                    3'b100: begin
-                                        case (rd)
-                                            5'd1: x1 <= rs1_val ^ imm_i;
-                                            5'd2: x2 <= rs1_val ^ imm_i;
-                                            5'd3: x3 <= rs1_val ^ imm_i;
-                                            5'd4: x4 <= rs1_val ^ imm_i;
-                                            default: begin end
-                                        endcase
-                                    end
-
-                                    // ORI
-                                    3'b110: begin
-                                        case (rd)
-                                            5'd1: x1 <= rs1_val | imm_i;
-                                            5'd2: x2 <= rs1_val | imm_i;
-                                            5'd3: x3 <= rs1_val | imm_i;
-                                            5'd4: x4 <= rs1_val | imm_i;
-                                            default: begin end
-                                        endcase
-                                    end
-
-                                    // ANDI
-                                    3'b111: begin
-                                        case (rd)
-                                            5'd1: x1 <= rs1_val & imm_i;
-                                            5'd2: x2 <= rs1_val & imm_i;
-                                            5'd3: x3 <= rs1_val & imm_i;
-                                            5'd4: x4 <= rs1_val & imm_i;
-                                            default: begin end
-                                        endcase
-                                    end
-
-                                    default: begin end
-
-                                endcase
                             end
 
                             // LOAD: minimal memory-mapped peripheral reads
@@ -468,47 +498,9 @@ module tt_um_kluterirv_rv32e_core (
                                 pc <= pc + 32'd4;
 
                                 if (funct3 == 3'b010) begin
-                                    if ((rs1_val + imm_i) == 32'h1000_0008) begin
-                                        // UART0 status:
-                                        // bit 0 = tx_busy
-                                        // bit 1 = rx_valid
-                                        case (rd)
-                                            5'd1: x1 <= {30'd0, uart0_rx_valid, uart0_tx_busy};
-                                            5'd2: x2 <= {30'd0, uart0_rx_valid, uart0_tx_busy};
-                                            5'd3: x3 <= {30'd0, uart0_rx_valid, uart0_tx_busy};
-                                            5'd4: x4 <= {30'd0, uart0_rx_valid, uart0_tx_busy};
-                                            default: begin end
-                                        endcase
-                                    end else if ((rs1_val + imm_i) == 32'h1000_000C) begin
-                                        // UART0 RX data.
-                                        case (rd)
-                                            5'd1: x1 <= {24'd0, uart0_rx_data};
-                                            5'd2: x2 <= {24'd0, uart0_rx_data};
-                                            5'd3: x3 <= {24'd0, uart0_rx_data};
-                                            5'd4: x4 <= {24'd0, uart0_rx_data};
-                                            default: begin end
-                                        endcase
-
-                                        // Reading RX data consumes the byte.
+                                    if ((rs1_val + imm_i) == 32'h1000_000C) begin
+                                        // Reading UART0 RX data consumes the byte.
                                         uart0_rx_clear <= 1'b1;
-                                    end else if ((rs1_val + imm_i) == 32'h1000_0014) begin
-                                        // I2C0 data read register.
-                                        case (rd)
-                                            5'd1: x1 <= {24'd0, i2c0_data_rd_data};
-                                            5'd2: x2 <= {24'd0, i2c0_data_rd_data};
-                                            5'd3: x3 <= {24'd0, i2c0_data_rd_data};
-                                            5'd4: x4 <= {24'd0, i2c0_data_rd_data};
-                                            default: begin end
-                                        endcase
-                                    end else if ((rs1_val + imm_i) == 32'h1000_0018) begin
-                                        // I2C0 status.
-                                        case (rd)
-                                            5'd1: x1 <= {24'd0, i2c0_status};
-                                            5'd2: x2 <= {24'd0, i2c0_status};
-                                            5'd3: x3 <= {24'd0, i2c0_status};
-                                            5'd4: x4 <= {24'd0, i2c0_status};
-                                            default: begin end
-                                        endcase
                                     end
                                 end
                             end
@@ -540,14 +532,6 @@ module tt_um_kluterirv_rv32e_core (
 
                             // JAL: jump and link
                             7'b1101111: begin
-                                case (rd)
-                                    5'd1: x1 <= pc + 32'd4;
-                                    5'd2: x2 <= pc + 32'd4;
-                                    5'd3: x3 <= pc + 32'd4;
-                                    5'd4: x4 <= pc + 32'd4;
-                                    default: begin end
-                                endcase
-
                                 pc <= pc + imm_j;
                             end
 
