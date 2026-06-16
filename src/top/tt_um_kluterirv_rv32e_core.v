@@ -121,7 +121,7 @@ module tt_um_kluterirv_rv32e_core (
     // easier to add later.
     wire unused_decoder_fields;
     assign unused_decoder_fields = is_lui | is_op_imm | is_op | is_load |
-                                   is_store | is_branch | is_jal | funct7[0];
+                                   is_store | is_branch | is_jal | (|funct7);
 
     wire [31:0] rs1_val;
     wire [31:0] rs2_val;
