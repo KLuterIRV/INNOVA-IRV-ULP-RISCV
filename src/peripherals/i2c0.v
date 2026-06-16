@@ -96,6 +96,16 @@ module i2c0 (
     assign unused_i2c0_reserved_bits = |ctrl_wr_data[7:5];
 
     // ---------------------------------------------------------------------
+    // Reserved control bits
+    // ---------------------------------------------------------------------
+    //
+    // ctrl_wr_data[7:5] are intentionally reserved for future I2C commands.
+    // This sink prevents unused-signal lint warnings without changing logic.
+
+    wire unused_i2c0_ctrl_reserved;
+    assign unused_i2c0_ctrl_reserved = |ctrl_wr_data[7:5];
+
+    // ---------------------------------------------------------------------
     // FSM
     // ---------------------------------------------------------------------
 
