@@ -41,6 +41,12 @@ module irv_fetch (
     assign pc_half_addr    = pc[6:1];
     assign pc_half_addr_hi = pc[6:1] + 6'd1;
 
+    // Current SRAM capacity only uses PC bits [6:1].
+    // pc[0] is ignored because instructions are halfword-aligned.
+    // pc[31:7] are reserved for future larger memories.
+    wire unused_pc_bits;
+    assign unused_pc_bits = |{pc[31:7], pc[0]};
+
     reg [15:0] instr_lo;
 
     always @(*) begin
