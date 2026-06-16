@@ -430,6 +430,10 @@ module tt_um_kluterirv_rv32e_core (
     // ---------------------------------------------------------------------
     // Unified 64x16 SRAM memory
     // ---------------------------------------------------------------------
+    //
+    // The physical SRAM implementation is wrapped in sram64x16.
+    // The CPU fetch path still requests 16-bit halfwords. Each RV32
+    // instruction is fetched using two sequential halfword reads.
 
     wire [5:0] pc_half_addr;
     wire [5:0] pc_half_addr_hi;
@@ -447,53 +451,22 @@ module tt_um_kluterirv_rv32e_core (
         endcase
     end
 
-    wire [5:0] sram_addr;
-    assign sram_addr = boot_mode ? boot_half_addr : run_sram_addr;
-
-    wire        cen;
-    wire        we_b0;
-    wire        we_b1;
-    wire        gwen_b0;
-    wire        gwen_b1;
-    wire [7:0]  wen_b0;
-    wire [7:0]  wen_b1;
-
-    assign cen = 1'b0;
-
-    assign we_b0 = boot_mode && boot_we && (boot_byte_sel == 1'b0);
-    assign we_b1 = boot_mode && boot_we && (boot_byte_sel == 1'b1);
-
-    assign gwen_b0 = ~we_b0;
-    assign gwen_b1 = ~we_b1;
-
-    assign wen_b0 = we_b0 ? 8'h00 : 8'hFF;
-    assign wen_b1 = we_b1 ? 8'h00 : 8'hFF;
-
-    wire [7:0] q0;
-    wire [7:0] q1;
-
-    gf180mcu_fd_ip_sram__sram64x8m8wm1 u_mem_b0 (
-        .CLK  (clk),
-        .CEN  (cen),
-        .GWEN (gwen_b0),
-        .WEN  (wen_b0),
-        .A    (sram_addr),
-        .D    (uio_in),
-        .Q    (q0)
-    );
-
-    gf180mcu_fd_ip_sram__sram64x8m8wm1 u_mem_b1 (
-        .CLK  (clk),
-        .CEN  (cen),
-        .GWEN (gwen_b1),
-        .WEN  (wen_b1),
-        .A    (sram_addr),
-        .D    (uio_in),
-        .Q    (q1)
-    );
-
     wire [15:0] sram_rhalf;
-    assign sram_rhalf = {q1, q0};
+    wire [7:0]  boot_debug_byte;
+
+    sram64x16 u_sram64x16 (
+        .clk             (clk),
+
+        .boot_mode       (boot_mode),
+        .boot_we         (boot_we),
+        .boot_byte_addr  (boot_byte_addr),
+        .boot_wdata      (uio_in),
+
+        .run_addr        (run_sram_addr),
+        .run_rdata       (sram_rhalf),
+
+        .boot_debug_byte (boot_debug_byte)
+    );
 
     // ---------------------------------------------------------------------
     // CPU FSM
@@ -602,9 +575,6 @@ module tt_um_kluterirv_rv32e_core (
     // ---------------------------------------------------------------------
     // Tiny Tapeout outputs
     // ---------------------------------------------------------------------
-
-    wire [7:0] boot_debug_byte;
-    assign boot_debug_byte = boot_byte_sel ? q1 : q0;
 
     assign uo_out = ena
         ? (uart0_rx_debug_mode ? (uart0_rx_valid ? uart0_rx_data : 8'd0)
