@@ -115,10 +115,15 @@ module tt_um_kluterirv_rv32e_core (
     // Minimal interrupt sources
     // ---------------------------------------------------------------------
 
+    wire [2:0] irq_status;
+    wire [2:0] irq_enable;
     wire [2:0] irq_pending;
-    assign irq_pending[0] = uart0_rx_valid;
-    assign irq_pending[1] = uart0_rx_overrun;
-    assign irq_pending[2] = i2c0_status[1]; // I2C done
+
+    assign irq_status[0] = uart0_rx_valid;
+    assign irq_status[1] = uart0_rx_overrun;
+    assign irq_status[2] = i2c0_status[1]; // I2C done
+
+    assign irq_pending = irq_status & irq_enable;
 
     // ---------------------------------------------------------------------
     // CPU core
@@ -214,6 +219,9 @@ module tt_um_kluterirv_rv32e_core (
     // ---------------------------------------------------------------------
 
     irv_peripheral_bus u_peripheral_bus (
+        .clk                 (clk),
+        .rst                 (rst),
+
         .load_en             (periph_load_en),
         .store_en            (periph_store_en),
         .addr                (periph_addr),
@@ -222,7 +230,8 @@ module tt_um_kluterirv_rv32e_core (
         .rdata               (periph_rdata),
         .stall               (periph_stall),
 
-        .irq_status          (irq_pending),
+        .irq_status          (irq_status),
+        .irq_enable          (irq_enable),
 
         .gpio0_we            (gpio0_we),
         .gpio0_wdata         (gpio0_wdata),

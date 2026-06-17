@@ -642,7 +642,9 @@ async def subtest_irq_wfi_uart_rx(dut):
 
     words = [
         enc_lui(2, 0x10000),        # PC 0x00: x2 = 0x1000_0000
-        WFI,                        # PC 0x04: sleep until UART RX IRQ
+        enc_addi(4, 0, 0x01),       # enable UART RX valid IRQ
+        enc_sw(4, 2, 0x24),         # IRQ_ENABLE = 0x01
+        WFI,                        # sleep until UART RX IRQ
     ]
 
     # Fill until PC 0x40. PC 0x40 is instruction index 16.
@@ -679,6 +681,8 @@ async def subtest_irq_status_uart_rx(dut):
 
     words = [
         enc_lui(2, 0x10000),        # x2 = MMIO base
+        enc_addi(4, 0, 0x01),       # enable UART RX valid IRQ
+        enc_sw(4, 2, 0x24),         # IRQ_ENABLE = 0x01
         WFI,
     ]
 
@@ -699,6 +703,42 @@ async def subtest_irq_status_uart_rx(dut):
         name="IRQ STATUS UART RX valid",
         words=words,
         expected_gpio=0x01,
+        cycles=360,
+        run_uio_in=0x0E,
+        concurrent_task=drive_uart_rx_byte(dut, 0x55, start_delay=40),
+    )
+
+
+
+
+async def subtest_irq_enable_masks_uart_rx(dut):
+    # IRQ_ENABLE = 0. UART RX valid occurs, but core must remain asleep.
+    # If it incorrectly wakes, handler writes 0xAA to GPIO.
+    # Expected GPIO remains 0x00.
+
+    words = [
+        enc_lui(2, 0x10000),        # x2 = MMIO base
+        enc_addi(4, 0, 0x00),       # disable all IRQs
+        enc_sw(4, 2, 0x24),         # IRQ_ENABLE = 0
+        WFI,
+    ]
+
+    while len(words) < 16:
+        words.append(enc_nop())
+
+    words += [
+        enc_addi(4, 0, 0xAA),       # should not execute
+        enc_sw(4, 2, 0x00),
+        EBREAK,
+    ]
+
+    assert len(words) <= 32
+
+    await run_program_and_check_gpio(
+        dut,
+        name="IRQ ENABLE masks UART RX",
+        words=words,
+        expected_gpio=0x00,
         cycles=360,
         run_uio_in=0x0E,
         concurrent_task=drive_uart_rx_byte(dut, 0x55, start_delay=40),
@@ -729,6 +769,7 @@ async def test_project(dut):
     await subtest_i2c_write_nack(dut)
     await subtest_irq_wfi_uart_rx(dut)
     await subtest_irq_status_uart_rx(dut)
+    await subtest_irq_enable_masks_uart_rx(dut)
 
     dut._log.info("All split regression subtests passed")
 

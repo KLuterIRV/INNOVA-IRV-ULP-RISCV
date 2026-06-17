@@ -30,6 +30,9 @@
 // -----------------------------------------------------------------------------
 
 module irv_peripheral_bus (
+    input  wire        clk,
+    input  wire        rst,
+
     input  wire        load_en,
     input  wire        store_en,
     input  wire [31:0] addr,
@@ -38,8 +41,9 @@ module irv_peripheral_bus (
     output reg  [31:0] rdata,
     output wire        stall,
 
-    // IRQ status from SoC-level interrupt sources.
+    // IRQ status/control.
     input  wire [2:0]  irq_status,
+    output wire [2:0]  irq_enable,
 
     // GPIO0
     output wire        gpio0_we,
@@ -79,6 +83,18 @@ module irv_peripheral_bus (
     localparam [31:0] ADDR_I2C0_DIV     = 32'h1000_001C;
 
     localparam [31:0] ADDR_IRQ_STATUS   = 32'h1000_0020;
+    localparam [31:0] ADDR_IRQ_ENABLE   = 32'h1000_0024;
+
+    reg [2:0] irq_enable_reg;
+    assign irq_enable = irq_enable_reg;
+
+    always @(posedge clk) begin
+        if (rst) begin
+            irq_enable_reg <= 3'b000;
+        end else if (store_en && !stall && (addr == ADDR_IRQ_ENABLE)) begin
+            irq_enable_reg <= wdata[2:0];
+        end
+    end
 
     wire i2c0_busy;
     assign i2c0_busy = i2c0_status[0];
@@ -147,6 +163,10 @@ module irv_peripheral_bus (
 
             ADDR_IRQ_STATUS: begin
                 rdata = {29'd0, irq_status};
+            end
+
+            ADDR_IRQ_ENABLE: begin
+                rdata = {29'd0, irq_enable_reg};
             end
 
             default: begin
