@@ -668,6 +668,43 @@ async def subtest_irq_wfi_uart_rx(dut):
     )
 
 
+
+
+async def subtest_irq_status_uart_rx(dut):
+    # Program layout:
+    #   PC 0x00: setup base + WFI
+    #   PC 0x40: interrupt handler
+    #
+    # Handler reads IRQ_STATUS at 0x1000_0020 and checks bit 0 = UART RX valid.
+
+    words = [
+        enc_lui(2, 0x10000),        # x2 = MMIO base
+        WFI,
+    ]
+
+    while len(words) < 16:
+        words.append(enc_nop())
+
+    words += [
+        enc_lw(4, 2, 0x20),         # x4 = IRQ_STATUS
+        enc_andi(4, 4, 0x01),       # isolate UART RX valid
+        enc_sw(4, 2, 0x00),         # GPIO = 0x01
+        EBREAK,
+    ]
+
+    assert len(words) <= 32
+
+    await run_program_and_check_gpio(
+        dut,
+        name="IRQ STATUS UART RX valid",
+        words=words,
+        expected_gpio=0x01,
+        cycles=360,
+        run_uio_in=0x0E,
+        concurrent_task=drive_uart_rx_byte(dut, 0x55, start_delay=40),
+    )
+
+
 # -----------------------------------------------------------------------------
 # Single cocotb entry point
 # -----------------------------------------------------------------------------
@@ -691,6 +728,7 @@ async def test_project(dut):
     await subtest_i2c_write_ack(dut)
     await subtest_i2c_write_nack(dut)
     await subtest_irq_wfi_uart_rx(dut)
+    await subtest_irq_status_uart_rx(dut)
 
     dut._log.info("All split regression subtests passed")
 

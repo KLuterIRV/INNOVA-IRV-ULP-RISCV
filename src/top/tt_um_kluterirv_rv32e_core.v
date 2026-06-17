@@ -222,6 +222,8 @@ module tt_um_kluterirv_rv32e_core (
         .rdata               (periph_rdata),
         .stall               (periph_stall),
 
+        .irq_status          (irq_pending),
+
         .gpio0_we            (gpio0_we),
         .gpio0_wdata         (gpio0_wdata),
 

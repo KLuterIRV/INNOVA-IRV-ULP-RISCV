@@ -38,6 +38,9 @@ module irv_peripheral_bus (
     output reg  [31:0] rdata,
     output wire        stall,
 
+    // IRQ status from SoC-level interrupt sources.
+    input  wire [2:0]  irq_status,
+
     // GPIO0
     output wire        gpio0_we,
     output wire [7:0]  gpio0_wdata,
@@ -74,6 +77,8 @@ module irv_peripheral_bus (
     localparam [31:0] ADDR_I2C0_DATA    = 32'h1000_0014;
     localparam [31:0] ADDR_I2C0_STATUS  = 32'h1000_0018;
     localparam [31:0] ADDR_I2C0_DIV     = 32'h1000_001C;
+
+    localparam [31:0] ADDR_IRQ_STATUS   = 32'h1000_0020;
 
     wire i2c0_busy;
     assign i2c0_busy = i2c0_status[0];
@@ -138,6 +143,10 @@ module irv_peripheral_bus (
 
             ADDR_I2C0_STATUS: begin
                 rdata = {24'd0, i2c0_status};
+            end
+
+            ADDR_IRQ_STATUS: begin
+                rdata = {29'd0, irq_status};
             end
 
             default: begin
