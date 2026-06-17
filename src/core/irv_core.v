@@ -243,7 +243,9 @@ module irv_core (
     wire        pc_halt_req;
 
     wire [31:0] jalr_target;
-    assign jalr_target = rs1_val + imm_i;
+    // Reuse ALU ADD path for JALR target instead of instantiating
+    // an extra 32-bit adder: JALR target = rs1 + imm_i.
+    assign jalr_target = alu_y;
 
     irv_pc_ctrl u_pc_ctrl (
         .pc           (pc),

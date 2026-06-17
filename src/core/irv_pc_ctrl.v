@@ -40,6 +40,11 @@ module irv_pc_ctrl (
 
     assign halt_req = is_ebreak;
 
+    // JALR forces target bit 0 to zero by definition.
+    // Keep the discarded bit visible to lint.
+    wire unused_jalr_target_lsb;
+    assign unused_jalr_target_lsb = jalr_target[0];
+
     // PC updates only when the instruction is not halted and not stalled.
     assign pc_we = !is_ebreak && !stall;
 
