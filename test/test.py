@@ -60,6 +60,16 @@ def enc_andi(rd, rs1, imm):
     )
 
 
+def enc_lw(rd, rs1, imm):
+    return (
+        ((imm & 0xFFF) << 20)
+        | ((rs1 & 0x1F) << 15)
+        | (0b010 << 12)
+        | ((rd & 0x1F) << 7)
+        | 0x03
+    )
+
+
 def enc_rtype(rd, rs1, rs2, funct3, funct7):
     return (
         ((funct7 & 0x7F) << 25)
@@ -107,8 +117,6 @@ def enc_sw(rs2, rs1, imm):
 
 
 def enc_branch(rs1, rs2, offset, funct3):
-    # RISC-V B-type immediate.
-    # offset is signed byte offset and must be 2-byte aligned.
     imm = offset & 0x1FFF
 
     bit12 = (imm >> 12) & 0x1
@@ -137,8 +145,6 @@ def enc_bne(rs1, rs2, offset):
 
 
 def enc_jal(rd, offset):
-    # RISC-V JAL immediate.
-    # offset is signed byte offset and must be 2-byte aligned.
     imm = offset & 0x1FFFFF
 
     bit20 = (imm >> 20) & 0x1
@@ -166,12 +172,23 @@ def enc_jalr(rd, rs1, imm):
     )
 
 
+def enc_nop():
+    return enc_addi(0, 0, 0)
+
+
 EBREAK = 0x00100073
 
 
 # -----------------------------------------------------------------------------
-# Testbench helpers
+# Common testbench helpers
 # -----------------------------------------------------------------------------
+
+async def start_clock(dut):
+    if not hasattr(dut, "_irv_clock_started"):
+        clock = Clock(dut.clk, 10, unit="us")
+        cocotb.start_soon(clock.start())
+        dut._irv_clock_started = True
+
 
 async def write_byte(dut, addr, data):
     dut.ui_in.value = ((addr & 0x7F) << 1) | 1
@@ -194,24 +211,40 @@ async def program_sram(dut, words):
         await write_byte(dut, addr, byte)
 
 
-async def run_program_and_check_gpio(dut, name, words, expected_gpio, cycles=180):
-    dut._log.info(f"========== {name} ==========")
+async def reset_and_program(dut, words, run_uio_in=0x0E):
+    await start_clock(dut)
 
-    # Reset asserted: boot/programming mode.
-    dut.rst_n.value = 0
+    dut.ena.value = 1
     dut.ui_in.value = 0
     dut.uio_in.value = 0x0E
+    dut.rst_n.value = 0
 
     await ClockCycles(dut.clk, 8)
 
     await program_sram(dut, words)
 
     dut.ui_in.value = 0
-    dut.uio_in.value = 0x0E
+    dut.uio_in.value = run_uio_in
 
     await ClockCycles(dut.clk, 5)
 
-    # Release reset and run.
+
+async def run_program_and_check_gpio(
+    dut,
+    name,
+    words,
+    expected_gpio,
+    cycles=220,
+    run_uio_in=0x0E,
+    concurrent_task=None,
+):
+    dut._log.info(f"========== {name} ==========")
+
+    await reset_and_program(dut, words, run_uio_in=run_uio_in)
+
+    if concurrent_task is not None:
+        cocotb.start_soon(concurrent_task)
+
     dut.rst_n.value = 1
 
     await ClockCycles(dut.clk, cycles)
@@ -224,20 +257,31 @@ async def run_program_and_check_gpio(dut, name, words, expected_gpio, cycles=180
     )
 
 
-async def read_uart_tx_byte(dut, clks_per_bit=8, timeout_cycles=600):
-    """Capture one UART byte from uio_out[0].
+def write_gpio_program(value_reg):
+    return [
+        enc_lui(2, 0x10000),
+        enc_sw(value_reg, 2, 0x00),
+        EBREAK,
+    ]
 
-    UART0 TX mapping:
-      uio_out[0] = UART0 TX
 
-    Frame format:
-      idle high
-      start bit low
-      8 data bits, LSB first
-      stop bit high
-    """
+def wait_loop_program(count_reg=1, count=20):
+    # x<count_reg> = count
+    # loop:
+    #   addi x<count_reg>, x<count_reg>, -1
+    #   bne  x<count_reg>, x0, loop
+    return [
+        enc_addi(count_reg, 0, count),
+        enc_addi(count_reg, count_reg, -1),
+        enc_bne(count_reg, 0, -4),
+    ]
 
-    # Wait until line is idle high.
+
+# -----------------------------------------------------------------------------
+# UART helpers
+# -----------------------------------------------------------------------------
+
+async def read_uart_tx_byte(dut, clks_per_bit=8, timeout_cycles=900):
     for _ in range(timeout_cycles):
         if int(dut.uio_out.value) & 0x1:
             break
@@ -245,7 +289,6 @@ async def read_uart_tx_byte(dut, clks_per_bit=8, timeout_cycles=600):
     else:
         raise AssertionError("UART TX did not reach idle high before capture")
 
-    # Detect falling edge of start bit.
     prev = int(dut.uio_out.value) & 0x1
 
     for _ in range(timeout_cycles):
@@ -259,8 +302,6 @@ async def read_uart_tx_byte(dut, clks_per_bit=8, timeout_cycles=600):
     else:
         raise AssertionError("UART TX start bit was not detected")
 
-    # Move to the middle of data bit 0:
-    # 1 full start bit + half data bit.
     await ClockCycles(dut.clk, clks_per_bit + (clks_per_bit // 2))
 
     value = 0
@@ -271,81 +312,40 @@ async def read_uart_tx_byte(dut, clks_per_bit=8, timeout_cycles=600):
         await ClockCycles(dut.clk, clks_per_bit)
 
     stop_bit = int(dut.uio_out.value) & 0x1
-
     assert stop_bit == 1, "UART TX stop bit was not high"
 
     return value
 
 
-async def run_program_and_check_uart_tx(dut, name, words, expected_byte, cycles_after=40):
-    dut._log.info(f"========== {name} ==========")
+async def drive_uart_rx_byte(dut, value, clks_per_bit=8, start_delay=8):
+    await ClockCycles(dut.clk, start_delay)
 
-    # Reset asserted: boot/programming mode.
-    dut.rst_n.value = 0
-    dut.ui_in.value = 0
     dut.uio_in.value = 0x0E
+    await ClockCycles(dut.clk, clks_per_bit)
 
-    await ClockCycles(dut.clk, 8)
+    dut.uio_in.value = 0x0C
+    await ClockCycles(dut.clk, clks_per_bit)
 
-    await program_sram(dut, words)
+    for bit_index in range(8):
+        bit = (value >> bit_index) & 0x1
+        dut.uio_in.value = 0x0E if bit else 0x0C
+        await ClockCycles(dut.clk, clks_per_bit)
 
-    dut.ui_in.value = 0
     dut.uio_in.value = 0x0E
-
-    await ClockCycles(dut.clk, 5)
-
-    # Release reset and capture UART TX.
-    dut.rst_n.value = 1
-
-    observed = await read_uart_tx_byte(dut, clks_per_bit=8, timeout_cycles=700)
-
-    dut._log.info(f"{name}: UART TX byte = 0x{observed:02x}")
-
-    assert observed == expected_byte, (
-        f"{name}: expected UART TX byte=0x{expected_byte:02x}, got 0x{observed:02x}"
-    )
-
-    await ClockCycles(dut.clk, cycles_after)
+    await ClockCycles(dut.clk, clks_per_bit * 2)
 
 
-def write_gpio_program(value_reg):
-    # Uses x2 as MMIO base 0x1000_0000.
-    return [
-        enc_lui(2, 0x10000),
-        enc_sw(value_reg, 2, 0x00),
-        EBREAK,
-    ]
+async def drive_uart_rx_two_bytes(dut, value_a, value_b):
+    await drive_uart_rx_byte(dut, value_a, start_delay=8)
+    await drive_uart_rx_byte(dut, value_b, start_delay=4)
 
 
 # -----------------------------------------------------------------------------
-# Core regression test
+# Core tests
 # -----------------------------------------------------------------------------
 
-@cocotb.test()
-async def test_project(dut):
-    dut._log.info("Start INNOVA IRV core regression test")
-
-    clock = Clock(dut.clk, 10, unit="us")
-    cocotb.start_soon(clock.start())
-
-    dut.ena.value = 1
-    dut.ui_in.value = 0
-    dut.uio_in.value = 0x0E
-    dut.rst_n.value = 0
-
-    await ClockCycles(dut.clk, 10)
-
-    # -------------------------------------------------------------------------
-    # Test 1: OP-IMM instructions.
-    #
-    # x1 = 0x55
-    # x1 = x1 XOR 0x0F = 0x5A
-    # x1 = x1 OR  0x80 = 0xDA
-    # x4 = x1 AND 0xFF = 0xDA
-    # GPIO = 0xDA
-    # -------------------------------------------------------------------------
-
-    op_imm_program = [
+async def subtest_core_alu_and_mmio(dut):
+    words = [
         enc_addi(1, 0, 0x55),
         enc_xori(1, 1, 0x0F),
         enc_ori(1, 1, 0x80),
@@ -354,26 +354,13 @@ async def test_project(dut):
 
     await run_program_and_check_gpio(
         dut,
-        name="OP-IMM ADDI/XORI/ORI/ANDI",
-        words=op_imm_program,
+        name="CORE OP-IMM and GPIO MMIO",
+        words=words,
         expected_gpio=0xDA,
         cycles=180,
     )
 
-    # -------------------------------------------------------------------------
-    # Test 2: R-type ALU instructions.
-    #
-    # x1 = 0x3C
-    # x2 = 0x0F
-    # x3 = x1 + x2 = 0x4B
-    # x3 = x3 - x2 = 0x3C
-    # x3 = x3 ^ x2 = 0x33
-    # x3 = x3 | x2 = 0x3F
-    # x4 = x3 & x1 = 0x3C
-    # GPIO = 0x3C
-    # -------------------------------------------------------------------------
-
-    rtype_program = [
+    words = [
         enc_addi(1, 0, 0x3C),
         enc_addi(2, 0, 0x0F),
         enc_add(3, 1, 2),
@@ -385,77 +372,52 @@ async def test_project(dut):
 
     await run_program_and_check_gpio(
         dut,
-        name="R-TYPE ADD/SUB/XOR/OR/AND",
-        words=rtype_program,
+        name="CORE R-type ALU",
+        words=words,
         expected_gpio=0x3C,
+        cycles=240,
+    )
+
+
+async def subtest_core_branch_jump_regfile(dut):
+    words = [
+        enc_addi(1, 0, 5),
+        enc_addi(2, 0, 5),
+        enc_beq(1, 2, 8),
+        enc_addi(4, 0, 0xEE),
+        enc_addi(4, 0, 0x33),
+
+        enc_addi(1, 0, 1),
+        enc_addi(2, 0, 2),
+        enc_bne(1, 2, 8),
+        enc_addi(4, 0, 0xEF),
+        enc_addi(4, 0, 0x44),
+    ] + write_gpio_program(4)
+
+    await run_program_and_check_gpio(
+        dut,
+        name="CORE BEQ/BNE",
+        words=words,
+        expected_gpio=0x44,
+        cycles=280,
+    )
+
+    words = [
+        enc_addi(4, 0, 0x11),
+        enc_jal(1, 8),
+        enc_addi(4, 0, 0xFF),
+        enc_addi(4, 1, 0x4D),
+    ] + write_gpio_program(4)
+
+    await run_program_and_check_gpio(
+        dut,
+        name="CORE JAL",
+        words=words,
+        expected_gpio=0x55,
         cycles=220,
     )
 
-    # -------------------------------------------------------------------------
-    # Test 3: BEQ and BNE.
-    #
-    # BEQ must skip a bad write.
-    # BNE must also skip a bad write.
-    # Final x4 = 0x44.
-    # GPIO = 0x44.
-    # -------------------------------------------------------------------------
-
-    branch_program = [
-        enc_addi(1, 0, 5),          # PC 0x00
-        enc_addi(2, 0, 5),          # PC 0x04
-        enc_beq(1, 2, 8),           # PC 0x08 -> jump to PC 0x10
-        enc_addi(4, 0, 0xEE),       # PC 0x0C skipped if BEQ works
-        enc_addi(4, 0, 0x33),       # PC 0x10
-
-        enc_addi(1, 0, 1),          # PC 0x14
-        enc_addi(2, 0, 2),          # PC 0x18
-        enc_bne(1, 2, 8),           # PC 0x1C -> jump to PC 0x24
-        enc_addi(4, 0, 0xEF),       # PC 0x20 skipped if BNE works
-        enc_addi(4, 0, 0x44),       # PC 0x24
-    ] + write_gpio_program(4)
-
-    await run_program_and_check_gpio(
-        dut,
-        name="BRANCH BEQ/BNE",
-        words=branch_program,
-        expected_gpio=0x44,
-        cycles=260,
-    )
-
-    # -------------------------------------------------------------------------
-    # Test 4: JAL.
-    #
-    # JAL writes return address into x1 and jumps over a bad instruction.
-    # At PC 0x0C, x4 = x1 + 0x4D = 0x08 + 0x4D = 0x55.
-    # GPIO = 0x55.
-    # -------------------------------------------------------------------------
-
-    jal_program = [
-        enc_addi(4, 0, 0x11),       # PC 0x00
-        enc_jal(1, 8),              # PC 0x04: x1 = 0x08, jump to PC 0x0C
-        enc_addi(4, 0, 0xFF),       # PC 0x08 skipped
-        enc_addi(4, 1, 0x4D),       # PC 0x0C: x4 = 0x55
-    ] + write_gpio_program(4)
-
-    await run_program_and_check_gpio(
-        dut,
-        name="JAL link and jump",
-        words=jal_program,
-        expected_gpio=0x55,
-        cycles=200,
-    )
-
-    # -------------------------------------------------------------------------
-    # Test 5: physical register file x5-x8.
-    #
-    # x5 = 0x12
-    # x6 = 0x34
-    # x7 = x5 + x6 = 0x46
-    # x8 = x7 ^ x5 = 0x54
-    # GPIO = x8 = 0x54
-    # -------------------------------------------------------------------------
-
-    regfile_x8_program = [
+    words = [
         enc_addi(5, 0, 0x12),
         enc_addi(6, 0, 0x34),
         enc_add(7, 5, 6),
@@ -464,60 +426,228 @@ async def test_project(dut):
 
     await run_program_and_check_gpio(
         dut,
-        name="REGFILE x5-x8",
-        words=regfile_x8_program,
+        name="CORE REGFILE x5-x8",
+        words=words,
         expected_gpio=0x54,
-        cycles=220,
+        cycles=240,
     )
 
-    # -------------------------------------------------------------------------
-    # Test 6: JALR link and indirect jump.
-    #
-    # x5 = 0x10
-    # JALR x1, 0(x5): x1 = 0x08 and PC jumps to 0x10.
-    # Instructions at 0x08 and 0x0C must be skipped.
-    # At 0x10: x4 = x1 + 0x66 = 0x6E.
-    # GPIO = 0x6E.
-    # -------------------------------------------------------------------------
-
-    jalr_program = [
-        enc_addi(5, 0, 0x10),       # PC 0x00: x5 = target 0x10
-        enc_jalr(1, 5, 0),          # PC 0x04: x1 = 0x08, jump to 0x10
-        enc_addi(4, 0, 0xEE),       # PC 0x08 skipped
-        enc_addi(4, 0, 0xEF),       # PC 0x0C skipped
-        enc_addi(4, 1, 0x66),       # PC 0x10: x4 = 0x6E
+    words = [
+        enc_addi(5, 0, 0x10),
+        enc_jalr(1, 5, 0),
+        enc_addi(4, 0, 0xEE),
+        enc_addi(4, 0, 0xEF),
+        enc_addi(4, 1, 0x66),
     ] + write_gpio_program(4)
 
     await run_program_and_check_gpio(
         dut,
-        name="JALR link and indirect jump",
-        words=jalr_program,
+        name="CORE JALR",
+        words=words,
         expected_gpio=0x6E,
-        cycles=240,
+        cycles=260,
     )
 
-    # -------------------------------------------------------------------------
-    # Test UART0 TX MMIO path.
-    #
-    # x2 = 0x1000_0000
-    # x4 = 0xA5
-    # SW x4, 4(x2) writes 0xA5 to UART0 TX register at 0x1000_0004.
-    # The test captures uio_out[0] and decodes one UART frame.
-    # -------------------------------------------------------------------------
 
-    uart_tx_program = [
+# -----------------------------------------------------------------------------
+# UART tests
+# -----------------------------------------------------------------------------
+
+async def subtest_uart_tx(dut):
+    words = [
         enc_lui(2, 0x10000),
         enc_addi(4, 0, 0x0A5),
         enc_sw(4, 2, 0x04),
         EBREAK,
     ]
 
-    await run_program_and_check_uart_tx(
+    await reset_and_program(dut, words, run_uio_in=0x0E)
+    dut.rst_n.value = 1
+
+    observed = await read_uart_tx_byte(dut, clks_per_bit=8, timeout_cycles=1000)
+    dut._log.info(f"UART TX byte = 0x{observed:02x}")
+
+    assert observed == 0xA5, f"Expected UART TX byte 0xA5, got 0x{observed:02x}"
+
+
+async def subtest_uart_rx_data_status_clear(dut):
+    words = [
+        enc_lui(2, 0x10000),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_nop(),
+        enc_lw(4, 2, 0x0C),    # read RX data, also clears valid
+        enc_sw(4, 2, 0x00),    # GPIO = received byte
+        EBREAK,
+    ]
+
+    # 32 words exactly = 128 bytes.
+    assert len(words) == 32
+
+    await run_program_and_check_gpio(
         dut,
-        name="UART0 TX MMIO write",
-        words=uart_tx_program,
-        expected_byte=0xA5,
-        cycles_after=60,
+        name="UART RX data read",
+        words=words,
+        expected_gpio=0x5A,
+        cycles=380,
+        run_uio_in=0x0E,
+        concurrent_task=drive_uart_rx_byte(dut, 0x5A, start_delay=8),
     )
 
-    dut._log.info("All core regression tests passed")
+    words = [
+        enc_lui(2, 0x10000),
+    ] + [enc_nop() for _ in range(26)] + [
+        enc_lw(3, 2, 0x0C),    # read RX data, clears valid
+        enc_lw(4, 2, 0x08),    # read status
+        enc_andi(4, 4, 0x02),  # isolate rx_valid
+        enc_sw(4, 2, 0x00),
+        EBREAK,
+    ]
+
+    assert len(words) == 32
+
+    await run_program_and_check_gpio(
+        dut,
+        name="UART RX read-clear valid bit",
+        words=words,
+        expected_gpio=0x00,
+        cycles=400,
+        run_uio_in=0x0E,
+        concurrent_task=drive_uart_rx_byte(dut, 0x77, start_delay=8),
+    )
+
+
+async def subtest_uart_rx_overrun(dut):
+    words = [
+        enc_lui(2, 0x10000),
+    ] + wait_loop_program(count_reg=1, count=32) + [
+        enc_lw(4, 2, 0x08),
+        enc_andi(4, 4, 0x06),  # rx_valid | rx_overrun
+        enc_sw(4, 2, 0x00),
+        EBREAK,
+    ]
+
+    assert len(words) < 32
+
+    await run_program_and_check_gpio(
+        dut,
+        name="UART RX overrun",
+        words=words,
+        expected_gpio=0x06,
+        cycles=520,
+        run_uio_in=0x0E,
+        concurrent_task=drive_uart_rx_two_bytes(dut, 0x11, 0x22),
+    )
+
+
+# -----------------------------------------------------------------------------
+# I2C tests
+# -----------------------------------------------------------------------------
+
+async def subtest_i2c_write_ack(dut):
+    words = [
+        enc_lui(2, 0x10000),
+        enc_addi(4, 0, 1),
+        enc_sw(4, 2, 0x1C),    # DIV = 1
+        enc_addi(4, 0, 0x80),
+        enc_sw(4, 2, 0x14),    # DATA = 0x80
+        enc_addi(4, 0, 0x07),
+        enc_sw(4, 2, 0x10),    # START + STOP + WRITE
+    ] + wait_loop_program(count_reg=1, count=24) + [
+        enc_lw(4, 2, 0x18),    # STATUS
+        enc_andi(4, 4, 0x17),  # busy/done/ack_error/scl_in
+        enc_sw(4, 2, 0x00),
+        EBREAK,
+    ]
+
+    assert len(words) < 32
+
+    await run_program_and_check_gpio(
+        dut,
+        name="I2C WRITE byte ACK",
+        words=words,
+        expected_gpio=0x12,
+        cycles=520,
+        # RX high, SCL high, SDA low -> ACK.
+        run_uio_in=0x06,
+    )
+
+
+async def subtest_i2c_write_nack(dut):
+    words = [
+        enc_lui(2, 0x10000),
+        enc_addi(4, 0, 1),
+        enc_sw(4, 2, 0x1C),    # DIV = 1
+        enc_addi(4, 0, 0x80),
+        enc_sw(4, 2, 0x14),    # DATA = 0x80
+        enc_addi(4, 0, 0x07),
+        enc_sw(4, 2, 0x10),    # START + STOP + WRITE
+    ] + wait_loop_program(count_reg=1, count=24) + [
+        enc_lw(4, 2, 0x18),    # STATUS
+        enc_andi(4, 4, 0x17),  # busy/done/ack_error/scl_in
+        enc_sw(4, 2, 0x00),
+        EBREAK,
+    ]
+
+    assert len(words) < 32
+
+    await run_program_and_check_gpio(
+        dut,
+        name="I2C WRITE byte NACK",
+        words=words,
+        expected_gpio=0x16,
+        cycles=520,
+        # RX high, SCL high, SDA high -> NACK.
+        run_uio_in=0x0E,
+    )
+
+# -----------------------------------------------------------------------------
+# Single cocotb entry point
+# -----------------------------------------------------------------------------
+#
+# TinyTapeout GL/RTL regression is more robust when all subtests run inside one
+# cocotb test. Each subtest explicitly asserts reset, reprograms the 128-byte
+# SRAM, releases reset and then checks its result.
+#
+# This avoids relying on simulator/DUT reinitialization between multiple
+# @cocotb.test() functions.
+
+@cocotb.test()
+async def test_project(dut):
+    dut._log.info("Start INNOVA IRV split regression suite")
+
+    await subtest_core_alu_and_mmio(dut)
+    await subtest_core_branch_jump_regfile(dut)
+    await subtest_uart_tx(dut)
+    await subtest_uart_rx_data_status_clear(dut)
+    await subtest_uart_rx_overrun(dut)
+    await subtest_i2c_write_ack(dut)
+    await subtest_i2c_write_nack(dut)
+
+    dut._log.info("All split regression subtests passed")
+
