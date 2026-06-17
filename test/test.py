@@ -224,6 +224,90 @@ async def run_program_and_check_gpio(dut, name, words, expected_gpio, cycles=180
     )
 
 
+async def read_uart_tx_byte(dut, clks_per_bit=8, timeout_cycles=600):
+    """Capture one UART byte from uio_out[0].
+
+    UART0 TX mapping:
+      uio_out[0] = UART0 TX
+
+    Frame format:
+      idle high
+      start bit low
+      8 data bits, LSB first
+      stop bit high
+    """
+
+    # Wait until line is idle high.
+    for _ in range(timeout_cycles):
+        if int(dut.uio_out.value) & 0x1:
+            break
+        await ClockCycles(dut.clk, 1)
+    else:
+        raise AssertionError("UART TX did not reach idle high before capture")
+
+    # Detect falling edge of start bit.
+    prev = int(dut.uio_out.value) & 0x1
+
+    for _ in range(timeout_cycles):
+        await ClockCycles(dut.clk, 1)
+        cur = int(dut.uio_out.value) & 0x1
+
+        if prev == 1 and cur == 0:
+            break
+
+        prev = cur
+    else:
+        raise AssertionError("UART TX start bit was not detected")
+
+    # Move to the middle of data bit 0:
+    # 1 full start bit + half data bit.
+    await ClockCycles(dut.clk, clks_per_bit + (clks_per_bit // 2))
+
+    value = 0
+
+    for bit_index in range(8):
+        bit_value = int(dut.uio_out.value) & 0x1
+        value |= bit_value << bit_index
+        await ClockCycles(dut.clk, clks_per_bit)
+
+    stop_bit = int(dut.uio_out.value) & 0x1
+
+    assert stop_bit == 1, "UART TX stop bit was not high"
+
+    return value
+
+
+async def run_program_and_check_uart_tx(dut, name, words, expected_byte, cycles_after=40):
+    dut._log.info(f"========== {name} ==========")
+
+    # Reset asserted: boot/programming mode.
+    dut.rst_n.value = 0
+    dut.ui_in.value = 0
+    dut.uio_in.value = 0x0E
+
+    await ClockCycles(dut.clk, 8)
+
+    await program_sram(dut, words)
+
+    dut.ui_in.value = 0
+    dut.uio_in.value = 0x0E
+
+    await ClockCycles(dut.clk, 5)
+
+    # Release reset and capture UART TX.
+    dut.rst_n.value = 1
+
+    observed = await read_uart_tx_byte(dut, clks_per_bit=8, timeout_cycles=700)
+
+    dut._log.info(f"{name}: UART TX byte = 0x{observed:02x}")
+
+    assert observed == expected_byte, (
+        f"{name}: expected UART TX byte=0x{expected_byte:02x}, got 0x{observed:02x}"
+    )
+
+    await ClockCycles(dut.clk, cycles_after)
+
+
 def write_gpio_program(value_reg):
     # Uses x2 as MMIO base 0x1000_0000.
     return [
@@ -410,6 +494,30 @@ async def test_project(dut):
         words=jalr_program,
         expected_gpio=0x6E,
         cycles=240,
+    )
+
+    # -------------------------------------------------------------------------
+    # Test UART0 TX MMIO path.
+    #
+    # x2 = 0x1000_0000
+    # x4 = 0xA5
+    # SW x4, 4(x2) writes 0xA5 to UART0 TX register at 0x1000_0004.
+    # The test captures uio_out[0] and decodes one UART frame.
+    # -------------------------------------------------------------------------
+
+    uart_tx_program = [
+        enc_lui(2, 0x10000),
+        enc_addi(4, 0, 0x0A5),
+        enc_sw(4, 2, 0x04),
+        EBREAK,
+    ]
+
+    await run_program_and_check_uart_tx(
+        dut,
+        name="UART0 TX MMIO write",
+        words=uart_tx_program,
+        expected_byte=0xA5,
+        cycles_after=60,
     )
 
     dut._log.info("All core regression tests passed")
