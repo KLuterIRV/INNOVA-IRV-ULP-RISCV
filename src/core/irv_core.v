@@ -341,7 +341,14 @@ module irv_core (
         rd_waddr = rd;
         rd_wdata = 32'd0;
 
-        if ((state == S_EXEC) &&
+        // IRQ wake return address.
+        // When the core wakes from WFI, store PC+4 in x1.
+        // The IRQ handler can return with: JALR x0, x1, 0.
+        if ((state == S_SLEEP) && irq_any) begin
+            rd_we    = 1'b1;
+            rd_waddr = 5'd1;
+            rd_wdata = pc + 32'd4;
+        end else if ((state == S_EXEC) &&
             !is_ebreak &&
             !is_wfi &&
             !periph_stall) begin

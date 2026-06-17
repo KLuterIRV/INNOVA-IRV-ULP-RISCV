@@ -745,6 +745,52 @@ async def subtest_irq_enable_masks_uart_rx(dut):
     )
 
 
+
+
+async def subtest_irq_return_uart_rx(dut):
+    # IRQ return test:
+    #
+    # Main program:
+    #   enable UART RX IRQ
+    #   WFI
+    #   after return, write 0xC3 to GPIO
+    #
+    # IRQ handler at 0x40:
+    #   read UART RX data to clear rx_valid
+    #   return with JALR x0, x1, 0
+
+    words = [
+        enc_lui(2, 0x10000),        # x2 = MMIO base
+        enc_addi(4, 0, 0x01),       # enable UART RX valid IRQ
+        enc_sw(4, 2, 0x24),         # IRQ_ENABLE = 0x01
+        WFI,                        # sleep until UART RX IRQ
+
+        enc_addi(5, 0, 0xC3),       # executed after IRQ return
+        enc_sw(5, 2, 0x00),         # GPIO = 0xC3
+        EBREAK,
+    ]
+
+    while len(words) < 16:
+        words.append(enc_nop())
+
+    words += [
+        enc_lw(4, 2, 0x0C),         # read UART RX data, clears rx_valid
+        enc_jalr(0, 1, 0),          # return to x1 = WFI_PC + 4
+    ]
+
+    assert len(words) <= 32
+
+    await run_program_and_check_gpio(
+        dut,
+        name="IRQ return from UART RX handler",
+        words=words,
+        expected_gpio=0xC3,
+        cycles=420,
+        run_uio_in=0x0E,
+        concurrent_task=drive_uart_rx_byte(dut, 0x33, start_delay=40),
+    )
+
+
 # -----------------------------------------------------------------------------
 # Single cocotb entry point
 # -----------------------------------------------------------------------------
@@ -770,6 +816,7 @@ async def test_project(dut):
     await subtest_irq_wfi_uart_rx(dut)
     await subtest_irq_status_uart_rx(dut)
     await subtest_irq_enable_masks_uart_rx(dut)
+    await subtest_irq_return_uart_rx(dut)
 
     dut._log.info("All split regression subtests passed")
 
