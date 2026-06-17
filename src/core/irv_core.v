@@ -298,12 +298,6 @@ module irv_core (
     // Peripheral/MMIO request generation
     // ---------------------------------------------------------------------
 
-    wire [31:0] periph_store_addr;
-    wire [31:0] periph_load_addr;
-
-    assign periph_store_addr = rs1_val + imm_s;
-    assign periph_load_addr  = rs1_val + imm_i;
-
     assign periph_store_en = (state == S_EXEC) &&
                              (opcode == 7'b0100011) &&
                              (funct3 == 3'b010);
@@ -312,7 +306,12 @@ module irv_core (
                              (opcode == 7'b0000011) &&
                              (funct3 == 3'b010);
 
-    assign periph_addr  = periph_store_en ? periph_store_addr : periph_load_addr;
+    // ULP/area optimization:
+    // Use one address adder for both LW and SW MMIO accesses.
+    wire [31:0] periph_addr_imm;
+    assign periph_addr_imm = periph_store_en ? imm_s : imm_i;
+
+    assign periph_addr  = rs1_val + periph_addr_imm;
     assign periph_wdata = rs2_val;
 
     // ---------------------------------------------------------------------

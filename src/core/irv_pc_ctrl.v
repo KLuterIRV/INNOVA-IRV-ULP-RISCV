@@ -6,17 +6,16 @@
 // Description:
 //   Program counter next-address control for the INNOVA IRV RV32E core.
 //
-// Current supported control flow:
-//   - Sequential execution: PC + 4
-//   - Branch taken:        PC + imm_b
-//   - JAL:                 PC + imm_j
-//   - JALR:                (rs1 + imm_i) & ~1
-//   - EBREAK:              request halt
-//   - Peripheral stall:    hold PC
+// ULP/area note:
+//   The sequential, branch and JAL paths share one PC adder:
 //
-// Notes:
-//   This module does not store the PC register.
-//   It only computes the next PC and control enables.
+//       pc_next = pc + selected_offset
+//
+//   JALR reuses the main ALU result from the core:
+//
+//       jalr_target = rs1 + imm_i
+//
+//   This avoids instantiating extra 32-bit adders.
 // -----------------------------------------------------------------------------
 
 module irv_pc_ctrl (
@@ -40,23 +39,29 @@ module irv_pc_ctrl (
 
     assign halt_req = is_ebreak;
 
-    // JALR forces target bit 0 to zero by definition.
-    // Keep the discarded bit visible to lint.
+    // JALR clears target bit 0 by definition. Keep this bit visible to lint.
     wire unused_jalr_target_lsb;
     assign unused_jalr_target_lsb = jalr_target[0];
 
     // PC updates only when the instruction is not halted and not stalled.
     assign pc_we = !is_ebreak && !stall;
 
-    always @(*) begin
-        pc_next = pc + 32'd4;
+    wire branch_selected;
+    assign branch_selected = is_branch && branch_taken;
 
-        if (is_jal) begin
-            pc_next = pc + imm_j;
-        end else if (is_jalr) begin
+    wire [31:0] pc_offset;
+    assign pc_offset = is_jal          ? imm_j :
+                       branch_selected ? imm_b :
+                                         32'd4;
+
+    wire [31:0] pc_plus_offset;
+    assign pc_plus_offset = pc + pc_offset;
+
+    always @(*) begin
+        if (is_jalr) begin
             pc_next = {jalr_target[31:1], 1'b0};
-        end else if (is_branch && branch_taken) begin
-            pc_next = pc + imm_b;
+        end else begin
+            pc_next = pc_plus_offset;
         end
     end
 
