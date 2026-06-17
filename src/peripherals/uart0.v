@@ -18,7 +18,8 @@ module uart0 #(
     input  wire       rx,
     input  wire       rx_clear,
     output wire [7:0] rx_data,
-    output wire       rx_valid
+    output wire       rx_valid,
+    output wire       rx_overrun
 );
 
     // ---------------------------------------------------------------------
@@ -143,12 +144,14 @@ module uart0 #(
     reg [7:0]  rx_shift;
     reg [7:0]  rx_data_reg;
     reg        rx_valid_reg;
+    reg        rx_overrun_reg;
 
     reg rx_meta;
     reg rx_sync;
 
-    assign rx_data  = rx_data_reg;
-    assign rx_valid = rx_valid_reg;
+    assign rx_data     = rx_data_reg;
+    assign rx_valid    = rx_valid_reg;
+    assign rx_overrun  = rx_overrun_reg;
 
     always @(posedge clk) begin
         if (rst) begin
@@ -156,9 +159,10 @@ module uart0 #(
             rx_clk_count <= 16'd0;
             rx_bit_index <= 3'd0;
             rx_shift     <= 8'd0;
-            rx_data_reg  <= 8'd0;
-            rx_valid_reg <= 1'b0;
-            rx_meta      <= 1'b1;
+            rx_data_reg     <= 8'd0;
+            rx_valid_reg    <= 1'b0;
+            rx_overrun_reg  <= 1'b0;
+            rx_meta         <= 1'b1;
             rx_sync      <= 1'b1;
         end else begin
             // Synchronize asynchronous RX input.
@@ -166,7 +170,8 @@ module uart0 #(
             rx_sync <= rx_meta;
 
             if (rx_clear) begin
-                rx_valid_reg <= 1'b0;
+                rx_valid_reg   <= 1'b0;
+                rx_overrun_reg <= 1'b0;
             end
 
             case (rx_state)
@@ -217,6 +222,10 @@ module uart0 #(
 
                         // Accept the byte only if stop bit is high.
                         if (rx_sync == 1'b1) begin
+                            if (rx_valid_reg) begin
+                                rx_overrun_reg <= 1'b1;
+                            end
+
                             rx_data_reg  <= rx_shift;
                             rx_valid_reg <= 1'b1;
                         end

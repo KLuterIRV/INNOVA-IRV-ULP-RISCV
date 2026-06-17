@@ -45,6 +45,7 @@ module irv_peripheral_bus (
     // UART0
     input  wire        uart0_tx_busy,
     input  wire        uart0_rx_valid,
+    input  wire        uart0_rx_overrun,
     input  wire [7:0]  uart0_rx_data,
     output wire [7:0]  uart0_tx_data,
     output wire        uart0_tx_start,
@@ -124,7 +125,7 @@ module irv_peripheral_bus (
     always @(*) begin
         case (addr)
             ADDR_UART0_STATUS: begin
-                rdata = {30'd0, uart0_rx_valid, uart0_tx_busy};
+                rdata = {29'd0, uart0_rx_overrun, uart0_rx_valid, uart0_tx_busy};
             end
 
             ADDR_UART0_RX: begin
