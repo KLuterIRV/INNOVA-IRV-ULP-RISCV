@@ -177,6 +177,7 @@ def enc_nop():
 
 
 EBREAK = 0x00100073
+WFI = 0x10500073
 
 
 # -----------------------------------------------------------------------------
@@ -626,6 +627,47 @@ async def subtest_i2c_write_nack(dut):
         run_uio_in=0x0E,
     )
 
+
+
+async def subtest_irq_wfi_uart_rx(dut):
+    # Program layout:
+    #   PC 0x00: setup base + WFI
+    #   PC 0x40: interrupt handler
+    #
+    # IRQ source:
+    #   UART RX valid wakes the core from WFI.
+    #
+    # Handler:
+    #   read UART RX data and write it to GPIO.
+
+    words = [
+        enc_lui(2, 0x10000),        # PC 0x00: x2 = 0x1000_0000
+        WFI,                        # PC 0x04: sleep until UART RX IRQ
+    ]
+
+    # Fill until PC 0x40. PC 0x40 is instruction index 16.
+    while len(words) < 16:
+        words.append(enc_nop())
+
+    words += [
+        enc_lw(4, 2, 0x0C),         # PC 0x40: x4 = UART RX data
+        enc_sw(4, 2, 0x00),         # GPIO = x4
+        EBREAK,
+    ]
+
+    assert len(words) <= 32
+
+    await run_program_and_check_gpio(
+        dut,
+        name="IRQ WFI wake on UART RX",
+        words=words,
+        expected_gpio=0xA6,
+        cycles=360,
+        run_uio_in=0x0E,
+        concurrent_task=drive_uart_rx_byte(dut, 0xA6, start_delay=40),
+    )
+
+
 # -----------------------------------------------------------------------------
 # Single cocotb entry point
 # -----------------------------------------------------------------------------
@@ -648,6 +690,7 @@ async def test_project(dut):
     await subtest_uart_rx_overrun(dut)
     await subtest_i2c_write_ack(dut)
     await subtest_i2c_write_nack(dut)
+    await subtest_irq_wfi_uart_rx(dut)
 
     dut._log.info("All split regression subtests passed")
 

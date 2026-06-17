@@ -41,6 +41,7 @@ module irv_decoder (
     output wire        is_branch,
     output wire        is_jal,
     output wire        is_jalr,
+    output wire        is_wfi,
     output wire        is_ebreak
 );
 
@@ -90,6 +91,10 @@ module irv_decoder (
     assign is_branch = (opcode == 7'b1100011);
     assign is_jal    = (opcode == 7'b1101111);
     assign is_jalr   = (opcode == 7'b1100111) && (funct3 == 3'b000);
+
+    // WFI encoding from RISC-V privileged spec.
+    // In this minimal core it is used as sleep-until-interrupt.
+    assign is_wfi    = (instr == 32'h1050_0073);
 
     assign is_ebreak = (instr == 32'h0010_0073);
 

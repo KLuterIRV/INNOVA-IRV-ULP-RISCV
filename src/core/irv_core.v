@@ -39,6 +39,12 @@ module irv_core (
     input  wire [31:0] periph_rdata,
     input  wire        periph_stall,
 
+    // Minimal interrupt inputs:
+    //   irq_pending[0] = UART RX valid
+    //   irq_pending[1] = UART RX overrun
+    //   irq_pending[2] = I2C done
+    input  wire [2:0]  irq_pending,
+
     // Debug/status.
     output wire [31:0] pc_debug,
     output wire [31:0] instr_debug,
@@ -54,7 +60,8 @@ module irv_core (
         S_CAP_LO  = 3'd1,
         S_CAP_HI  = 3'd2,
         S_EXEC    = 3'd3,
-        S_HALT    = 3'd4;
+        S_HALT    = 3'd4,
+        S_SLEEP   = 3'd5;
 
     reg [2:0]  state;
     reg [31:0] pc;
@@ -91,6 +98,7 @@ module irv_core (
     wire is_branch;
     wire is_jal;
     wire is_jalr;
+    wire is_wfi;
     wire is_ebreak;
 
     irv_decoder u_decoder (
@@ -117,13 +125,14 @@ module irv_core (
         .is_branch (is_branch),
         .is_jal    (is_jal),
         .is_jalr   (is_jalr),
+        .is_wfi    (is_wfi),
         .is_ebreak (is_ebreak)
     );
 
     wire unused_decoder_fields;
     assign unused_decoder_fields = is_lui | is_op_imm | is_op | is_load |
                                    is_store | is_branch | is_jal | is_jalr |
-                                   (|funct7);
+                                   is_wfi | (|funct7);
 
     // ---------------------------------------------------------------------
     // Register file
@@ -267,6 +276,15 @@ module irv_core (
     );
 
     // ---------------------------------------------------------------------
+    // Minimal interrupt / sleep control
+    // ---------------------------------------------------------------------
+
+    localparam [31:0] IRQ_VECTOR = 32'h0000_0040;
+
+    wire irq_any;
+    assign irq_any = |irq_pending;
+
+    // ---------------------------------------------------------------------
     // Instruction fetch
     // ---------------------------------------------------------------------
 
@@ -325,6 +343,7 @@ module irv_core (
 
         if ((state == S_EXEC) &&
             !is_ebreak &&
+            !is_wfi &&
             !periph_stall) begin
 
             case (opcode)
@@ -429,6 +448,10 @@ module irv_core (
                     if (pc_halt_req) begin
                         halted_r <= 1'b1;
                         state    <= S_HALT;
+                    end else if (is_wfi) begin
+                        // WFI enters low-activity sleep state.
+                        // The PC is not advanced. On IRQ wake, PC jumps to IRQ_VECTOR.
+                        state <= S_SLEEP;
                     end else if (!pc_we) begin
                         // Wait here until the selected peripheral is ready.
                         // PC is not advanced, so the same instruction is retried.
@@ -436,6 +459,15 @@ module irv_core (
                     end else begin
                         pc    <= pc_next;
                         state <= S_ADDR_LO;
+                    end
+                end
+
+                S_SLEEP: begin
+                    if (irq_any) begin
+                        pc    <= IRQ_VECTOR;
+                        state <= S_ADDR_LO;
+                    end else begin
+                        state <= S_SLEEP;
                     end
                 end
 
