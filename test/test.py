@@ -1,6 +1,6 @@
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import ClockCycles
+from cocotb.triggers import ClockCycles, Timer
 
 
 # -----------------------------------------------------------------------------
@@ -249,6 +249,10 @@ async def run_program_and_check_gpio(
     dut.rst_n.value = 1
 
     await ClockCycles(dut.clk, cycles)
+
+    # In gate-level/post-layout simulation, outputs may still be settling
+    # immediately after a clock edge. Wait a small amount before sampling.
+    await Timer(1, units="ns")
 
     observed = int(dut.uo_out.value)
     dut._log.info(f"{name}: uo_out = 0x{observed:02x}")
