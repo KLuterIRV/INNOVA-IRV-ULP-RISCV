@@ -477,49 +477,27 @@ async def subtest_uart_tx(dut):
 
 async def subtest_uart_rx_data_status_clear(dut):
     words = [
-        enc_lui(2, 0x10000),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_nop(),
-        enc_lw(4, 2, 0x0C),    # read RX data, also clears valid
-        enc_sw(4, 2, 0x00),    # GPIO = received byte
+        enc_lui(2, 0x10000),       # x2 = MMIO base
+
+        # Poll UART status until rx_valid is set.
+        # STATUS bit 1 = rx_valid.
+        enc_lw(4, 2, 0x08),        # loop: x4 = UART STATUS
+        enc_andi(4, 4, 0x02),      # isolate rx_valid
+        enc_beq(4, 0, -8),         # if not valid, repeat status poll
+
+        enc_lw(4, 2, 0x0C),        # read RX data, also clears valid
+        enc_sw(4, 2, 0x00),        # GPIO = received byte
         EBREAK,
     ]
 
-    # 32 words exactly = 128 bytes.
-    assert len(words) == 32
+    assert len(words) < 32
 
     await run_program_and_check_gpio(
         dut,
         name="UART RX data read",
         words=words,
         expected_gpio=0x5A,
-        cycles=380,
+        cycles=520,
         run_uio_in=0x0E,
         concurrent_task=drive_uart_rx_byte(dut, 0x5A, start_delay=8),
     )
