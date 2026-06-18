@@ -53,6 +53,14 @@ def enc_addi(rd, rs1, imm):
     )
 
 
+
+def enc_slt(rd, rs1, rs2):
+    return enc_rtype(rd, rs1, rs2, funct3=0b010, funct7=0b0000000)
+
+
+def enc_sltu(rd, rs1, rs2):
+    return enc_rtype(rd, rs1, rs2, funct3=0b011, funct7=0b0000000)
+
 def enc_xori(rd, rs1, imm):
     return (
         ((imm & 0xFFF) << 20)
@@ -82,6 +90,26 @@ def enc_andi(rd, rs1, imm):
         | 0x13
     )
 
+
+
+def enc_slti(rd, rs1, imm):
+    return (
+        ((imm & 0xFFF) << 20)
+        | ((rs1 & 0x1F) << 15)
+        | (0b010 << 12)
+        | ((rd & 0x1F) << 7)
+        | 0x13
+    )
+
+
+def enc_sltiu(rd, rs1, imm):
+    return (
+        ((imm & 0xFFF) << 20)
+        | ((rs1 & 0x1F) << 15)
+        | (0b011 << 12)
+        | ((rd & 0x1F) << 7)
+        | 0x13
+    )
 
 def enc_lw(rd, rs1, imm):
     return (
@@ -434,6 +462,61 @@ async def subtest_core_alu_and_mmio(dut):
         cycles=240,
     )
 
+
+
+async def subtest_core_slt_sltu(dut):
+    # Validate signed and unsigned less-than operations.
+    #
+    # x1 = -1 / 0xFFFF_FFFF
+    # x2 =  1
+    # x7 accumulates one bit per correctly behaving comparison.
+    #
+    # Expected GPIO = 0x1F:
+    #   bit 0: SLT   (-1 < 1 signed)       -> true
+    #   bit 1: SLTU  (0xffffffff < 1)      -> false, false is expected
+    #   bit 2: SLTI  (-1 < 0 signed)       -> true
+    #   bit 3: SLTIU (1 < 2 unsigned)      -> true
+    #   bit 4: SLTIU (0xffffffff < 1)      -> false, false is expected
+
+    words = [
+        enc_addi(1, 0, -1),         # x1 = -1 / 0xffffffff
+        enc_addi(2, 0, 1),          # x2 = 1
+        enc_addi(7, 0, 0),          # x7 = accumulator
+
+        enc_slt(3, 1, 2),           # true
+        enc_beq(3, 0, 8),
+        enc_ori(7, 7, 0x01),
+
+        enc_sltu(3, 1, 2),          # false expected
+        enc_bne(3, 0, 8),
+        enc_ori(7, 7, 0x02),
+
+        enc_slti(3, 1, 0),          # true
+        enc_beq(3, 0, 8),
+        enc_ori(7, 7, 0x04),
+
+        enc_sltiu(3, 2, 2),         # true
+        enc_beq(3, 0, 8),
+        enc_ori(7, 7, 0x08),
+
+        enc_sltiu(3, 1, 1),         # false expected
+        enc_bne(3, 0, 8),
+        enc_ori(7, 7, 0x10),
+
+        enc_lui(8, 0x10000),        # x8 = MMIO base
+        enc_sw(7, 8, 0x00),         # GPIO = accumulated result
+        EBREAK,
+    ]
+
+    assert len(words) <= 32
+
+    await run_program_and_check_gpio(
+        dut,
+        name="CORE SLT/SLTU/SLTI/SLTIU",
+        words=words,
+        expected_gpio=0x1F,
+        cycles=340,
+    )
 
 async def subtest_core_branch_jump_regfile(dut):
     words = [
@@ -902,6 +985,7 @@ async def test_project(dut):
     gls = is_gate_level_sim(dut)
 
     await subtest_core_alu_and_mmio(dut)
+    await subtest_core_slt_sltu(dut)
     await subtest_core_branch_jump_regfile(dut)
     await subtest_uart_tx(dut)
 

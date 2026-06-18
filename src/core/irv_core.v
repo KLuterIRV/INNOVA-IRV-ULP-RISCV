@@ -164,11 +164,13 @@ module irv_core (
     // ---------------------------------------------------------------------
 
     localparam [3:0]
-        IRV_ALU_ADD = 4'd0,
-        IRV_ALU_SUB = 4'd1,
-        IRV_ALU_AND = 4'd2,
-        IRV_ALU_OR  = 4'd3,
-        IRV_ALU_XOR = 4'd4;
+        IRV_ALU_ADD  = 4'd0,
+        IRV_ALU_SUB  = 4'd1,
+        IRV_ALU_AND  = 4'd2,
+        IRV_ALU_OR   = 4'd3,
+        IRV_ALU_XOR  = 4'd4,
+        IRV_ALU_SLT  = 4'd5,
+        IRV_ALU_SLTU = 4'd6;
 
     reg  [3:0]  alu_op;
     wire [31:0] alu_b;
@@ -184,18 +186,20 @@ module irv_core (
 
         case (opcode)
 
-            // OP-IMM: ADDI / XORI / ORI / ANDI
+            // OP-IMM: ADDI / SLTI / SLTIU / XORI / ORI / ANDI
             7'b0010011: begin
                 case (funct3)
-                    3'b000: alu_op = IRV_ALU_ADD; // ADDI
-                    3'b100: alu_op = IRV_ALU_XOR; // XORI
-                    3'b110: alu_op = IRV_ALU_OR;  // ORI
-                    3'b111: alu_op = IRV_ALU_AND; // ANDI
+                    3'b000: alu_op = IRV_ALU_ADD;  // ADDI
+                    3'b010: alu_op = IRV_ALU_SLT;  // SLTI
+                    3'b011: alu_op = IRV_ALU_SLTU; // SLTIU
+                    3'b100: alu_op = IRV_ALU_XOR;  // XORI
+                    3'b110: alu_op = IRV_ALU_OR;   // ORI
+                    3'b111: alu_op = IRV_ALU_AND;  // ANDI
                     default: alu_op = IRV_ALU_ADD;
                 endcase
             end
 
-            // OP: ADD / SUB / XOR / OR / AND
+            // OP: ADD / SUB / SLT / SLTU / XOR / OR / AND
             7'b0110011: begin
                 case (funct3)
                     3'b000: begin
@@ -206,9 +210,11 @@ module irv_core (
                         end
                     end
 
-                    3'b100: alu_op = IRV_ALU_XOR; // XOR
-                    3'b110: alu_op = IRV_ALU_OR;  // OR
-                    3'b111: alu_op = IRV_ALU_AND; // AND
+                    3'b010: alu_op = IRV_ALU_SLT;  // SLT
+                    3'b011: alu_op = IRV_ALU_SLTU; // SLTU
+                    3'b100: alu_op = IRV_ALU_XOR;  // XOR
+                    3'b110: alu_op = IRV_ALU_OR;   // OR
+                    3'b111: alu_op = IRV_ALU_AND;  // AND
                     default: alu_op = IRV_ALU_ADD;
                 endcase
             end
@@ -363,10 +369,12 @@ module irv_core (
                     end
                 end
 
-                // OP-IMM: ADDI / XORI / ORI / ANDI
+                // OP-IMM: ADDI / SLTI / SLTIU / XORI / ORI / ANDI
                 7'b0010011: begin
                     if ((rd != 5'd0) &&
                         ((funct3 == 3'b000) ||
+                         (funct3 == 3'b010) ||
+                         (funct3 == 3'b011) ||
                          (funct3 == 3'b100) ||
                          (funct3 == 3'b110) ||
                          (funct3 == 3'b111))) begin
@@ -375,12 +383,14 @@ module irv_core (
                     end
                 end
 
-                // OP: ADD / SUB / XOR / OR / AND
+                // OP: ADD / SUB / SLT / SLTU / XOR / OR / AND
                 7'b0110011: begin
                     if ((rd != 5'd0) &&
                         (
                             ((funct3 == 3'b000) &&
                              ((funct7 == 7'b0000000) || (funct7 == 7'b0100000))) ||
+                            ((funct3 == 3'b010) && (funct7 == 7'b0000000)) ||
+                            ((funct3 == 3'b011) && (funct7 == 7'b0000000)) ||
                             ((funct3 == 3'b100) && (funct7 == 7'b0000000)) ||
                             ((funct3 == 3'b110) && (funct7 == 7'b0000000)) ||
                             ((funct3 == 3'b111) && (funct7 == 7'b0000000))
