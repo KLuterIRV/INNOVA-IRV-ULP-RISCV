@@ -252,7 +252,7 @@ async def run_program_and_check_gpio(
 
     # In gate-level/post-layout simulation, outputs may still be settling
     # immediately after a clock edge. Wait a small amount before sampling.
-    await Timer(1, units="ns")
+    await Timer(1, unit="ns")
 
     observed = int(dut.uo_out.value)
     dut._log.info(f"{name}: uo_out = 0x{observed:02x}")
@@ -323,20 +323,27 @@ async def read_uart_tx_byte(dut, clks_per_bit=8, timeout_cycles=900):
 
 
 async def drive_uart_rx_byte(dut, value, clks_per_bit=8, start_delay=8):
+    # In gate-level simulation, do not toggle UART RX exactly on a clock edge.
+    # ClockCycles resumes on a clock edge, so wait a small time before changing
+    # uio_in. This avoids setup/hold races in the RX sampling flip-flops.
+    async def drive_uio_safe(v):
+        await Timer(1, unit="ns")
+        dut.uio_in.value = v
+
     await ClockCycles(dut.clk, start_delay)
 
-    dut.uio_in.value = 0x0E
+    await drive_uio_safe(0x0E)      # idle high
     await ClockCycles(dut.clk, clks_per_bit)
 
-    dut.uio_in.value = 0x0C
+    await drive_uio_safe(0x0C)      # start bit, UART RX low on uio_in[1]
     await ClockCycles(dut.clk, clks_per_bit)
 
     for bit_index in range(8):
         bit = (value >> bit_index) & 0x1
-        dut.uio_in.value = 0x0E if bit else 0x0C
+        await drive_uio_safe(0x0E if bit else 0x0C)
         await ClockCycles(dut.clk, clks_per_bit)
 
-    dut.uio_in.value = 0x0E
+    await drive_uio_safe(0x0E)      # stop/idle high
     await ClockCycles(dut.clk, clks_per_bit * 2)
 
 
