@@ -111,6 +111,39 @@ def enc_sltiu(rd, rs1, imm):
         | 0x13
     )
 
+
+def enc_slli(rd, rs1, shamt):
+    return (
+        (0b0000000 << 25)
+        | ((shamt & 0x1F) << 20)
+        | ((rs1 & 0x1F) << 15)
+        | (0b001 << 12)
+        | ((rd & 0x1F) << 7)
+        | 0x13
+    )
+
+
+def enc_srli(rd, rs1, shamt):
+    return (
+        (0b0000000 << 25)
+        | ((shamt & 0x1F) << 20)
+        | ((rs1 & 0x1F) << 15)
+        | (0b101 << 12)
+        | ((rd & 0x1F) << 7)
+        | 0x13
+    )
+
+
+def enc_srai(rd, rs1, shamt):
+    return (
+        (0b0100000 << 25)
+        | ((shamt & 0x1F) << 20)
+        | ((rs1 & 0x1F) << 15)
+        | (0b101 << 12)
+        | ((rd & 0x1F) << 7)
+        | 0x13
+    )
+
 def enc_lw(rd, rs1, imm):
     return (
         ((imm & 0xFFF) << 20)
@@ -599,6 +632,52 @@ async def subtest_core_compare_branches(dut):
         cycles=420,
     )
 
+
+async def subtest_core_shift_immediates(dut):
+    # Validate SLLI/SRLI/SRAI.
+    #
+    # x7 accumulates one bit per correct result.
+    # Expected GPIO = 0x07.
+
+    words = [
+        enc_addi(7, 0, 0),          # accumulator
+
+        enc_addi(1, 0, 1),
+        enc_slli(3, 1, 5),          # 1 << 5 = 32
+        enc_addi(4, 0, 32),
+        enc_beq(3, 4, 8),
+        enc_jal(0, 8),
+        enc_ori(7, 7, 0x01),
+
+        enc_addi(1, 0, 64),
+        enc_srli(3, 1, 3),          # 64 >> 3 = 8
+        enc_addi(4, 0, 8),
+        enc_beq(3, 4, 8),
+        enc_jal(0, 8),
+        enc_ori(7, 7, 0x02),
+
+        enc_addi(1, 0, -16),
+        enc_srai(3, 1, 2),          # -16 >>> 2 arithmetic = -4
+        enc_addi(4, 0, -4),
+        enc_beq(3, 4, 8),
+        enc_jal(0, 8),
+        enc_ori(7, 7, 0x04),
+
+        enc_lui(8, 0x10000),
+        enc_sw(7, 8, 0x00),
+        EBREAK,
+    ]
+
+    assert len(words) <= 32
+
+    await run_program_and_check_gpio(
+        dut,
+        name="CORE SLLI/SRLI/SRAI",
+        words=words,
+        expected_gpio=0x07,
+        cycles=420,
+    )
+
 async def subtest_core_branch_jump_regfile(dut):
     words = [
         enc_addi(1, 0, 5),
@@ -1068,6 +1147,7 @@ async def test_project(dut):
     await subtest_core_alu_and_mmio(dut)
     await subtest_core_slt_sltu(dut)
     await subtest_core_compare_branches(dut)
+    await subtest_core_shift_immediates(dut)
     await subtest_core_branch_jump_regfile(dut)
     await subtest_uart_tx(dut)
 

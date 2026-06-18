@@ -14,11 +14,11 @@
 //   - XOR
 //   - SLT
 //   - SLTU
-//
-// Future operations:
 //   - SLL
 //   - SRL
 //   - SRA
+//
+// Future operations:
 //
 // Notes:
 //   The ALU is purely combinational. Register writeback is handled outside
@@ -40,7 +40,10 @@ module irv_alu (
         ALU_OR   = 4'd3,
         ALU_XOR  = 4'd4,
         ALU_SLT  = 4'd5,
-        ALU_SLTU = 4'd6;
+        ALU_SLTU = 4'd6,
+        ALU_SLL  = 4'd7,
+        ALU_SRL  = 4'd8,
+        ALU_SRA  = 4'd9;
 
     assign eq = (a == b);
 
@@ -53,6 +56,9 @@ module irv_alu (
             ALU_XOR:  y = a ^ b;
             ALU_SLT:  y = ($signed(a) < $signed(b)) ? 32'd1 : 32'd0;
             ALU_SLTU: y = (a < b) ? 32'd1 : 32'd0;
+            ALU_SLL:  y = a << b[4:0];
+            ALU_SRL:  y = a >> b[4:0];
+            ALU_SRA:  y = $signed(a) >>> b[4:0];
             default:  y = 32'd0;
         endcase
     end
