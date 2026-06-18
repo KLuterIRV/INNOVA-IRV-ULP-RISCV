@@ -195,6 +195,22 @@ def enc_bne(rs1, rs2, offset):
     return enc_branch(rs1, rs2, offset, funct3=0b001)
 
 
+
+def enc_blt(rs1, rs2, offset):
+    return enc_branch(rs1, rs2, offset, funct3=0b100)
+
+
+def enc_bge(rs1, rs2, offset):
+    return enc_branch(rs1, rs2, offset, funct3=0b101)
+
+
+def enc_bltu(rs1, rs2, offset):
+    return enc_branch(rs1, rs2, offset, funct3=0b110)
+
+
+def enc_bgeu(rs1, rs2, offset):
+    return enc_branch(rs1, rs2, offset, funct3=0b111)
+
 def enc_jal(rd, offset):
     imm = offset & 0x1FFFFF
 
@@ -516,6 +532,71 @@ async def subtest_core_slt_sltu(dut):
         words=words,
         expected_gpio=0x1F,
         cycles=340,
+    )
+
+
+async def subtest_core_compare_branches(dut):
+    # Validate BLT/BGE/BLTU/BGEU.
+    #
+    # x1 = -1 / 0xffffffff
+    # x2 =  1
+    # x7 accumulates a bit for each branch behaving correctly.
+    #
+    # Expected GPIO = 0x3F:
+    #   bit 0: BLT  signed true       (-1 < 1)
+    #   bit 1: BGE  signed true       (1 >= -1)
+    #   bit 2: BLTU unsigned false    (0xffffffff < 1 is false)
+    #   bit 3: BGEU unsigned true     (0xffffffff >= 1)
+    #   bit 4: BGE  signed false      (-1 >= 1 is false)
+    #   bit 5: BLTU unsigned true     (1 < 0xffffffff)
+
+    words = [
+        enc_addi(1, 0, -1),         # x1 = -1 / 0xffffffff
+        enc_addi(2, 0, 1),          # x2 = 1
+        enc_addi(7, 0, 0),          # accumulator
+
+        # True branch helper:
+        #   branch +8 -> execute ORI
+        #   JAL +8    -> skip ORI if branch not taken
+
+        enc_blt(1, 2, 8),           # signed true
+        enc_jal(0, 8),
+        enc_ori(7, 7, 0x01),
+
+        enc_bge(2, 1, 8),           # signed true
+        enc_jal(0, 8),
+        enc_ori(7, 7, 0x02),
+
+        # False expected:
+        #   if branch is not taken, ORI executes.
+        #   if branch is incorrectly taken, ORI is skipped.
+        enc_bltu(1, 2, 8),          # unsigned false expected
+        enc_ori(7, 7, 0x04),
+
+        enc_bgeu(1, 2, 8),          # unsigned true
+        enc_jal(0, 8),
+        enc_ori(7, 7, 0x08),
+
+        enc_bge(1, 2, 8),           # signed false expected
+        enc_ori(7, 7, 0x10),
+
+        enc_bltu(2, 1, 8),          # unsigned true
+        enc_jal(0, 8),
+        enc_ori(7, 7, 0x20),
+
+        enc_lui(8, 0x10000),
+        enc_sw(7, 8, 0x00),
+        EBREAK,
+    ]
+
+    assert len(words) <= 32
+
+    await run_program_and_check_gpio(
+        dut,
+        name="CORE BLT/BGE/BLTU/BGEU",
+        words=words,
+        expected_gpio=0x3F,
+        cycles=420,
     )
 
 async def subtest_core_branch_jump_regfile(dut):
@@ -986,6 +1067,7 @@ async def test_project(dut):
 
     await subtest_core_alu_and_mmio(dut)
     await subtest_core_slt_sltu(dut)
+    await subtest_core_compare_branches(dut)
     await subtest_core_branch_jump_regfile(dut)
     await subtest_uart_tx(dut)
 

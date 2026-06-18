@@ -178,8 +178,9 @@ module irv_core (
     wire        alu_eq_unused;
 
     // OP-IMM uses the sign-extended immediate.
-    // R-type OP uses rs2.
-    assign alu_b = (opcode == 7'b0110011) ? rs2_val : imm_i;
+    // R-type OP and BRANCH comparisons use rs2.
+    assign alu_b = ((opcode == 7'b0110011) ||
+                    (opcode == 7'b1100011)) ? rs2_val : imm_i;
 
     always @(*) begin
         alu_op = IRV_ALU_ADD;
@@ -195,6 +196,17 @@ module irv_core (
                     3'b100: alu_op = IRV_ALU_XOR;  // XORI
                     3'b110: alu_op = IRV_ALU_OR;   // ORI
                     3'b111: alu_op = IRV_ALU_AND;  // ANDI
+                    default: alu_op = IRV_ALU_ADD;
+                endcase
+            end
+
+            // BRANCH: use ALU compare paths for BLT/BGE/BLTU/BGEU.
+            7'b1100011: begin
+                case (funct3)
+                    3'b100,
+                    3'b101: alu_op = IRV_ALU_SLT;  // BLT / BGE
+                    3'b110,
+                    3'b111: alu_op = IRV_ALU_SLTU; // BLTU / BGEU
                     default: alu_op = IRV_ALU_ADD;
                 endcase
             end
@@ -234,23 +246,27 @@ module irv_core (
         .eq     (alu_eq_unused)
     );
 
-    wire unused_alu_eq_sink;
-    assign unused_alu_eq_sink = alu_eq_unused;
-
     // ---------------------------------------------------------------------
     // Branch and PC control
     // ---------------------------------------------------------------------
 
     wire branch_eq;
+    wire branch_lt;
     wire branch_taken;
 
-    assign branch_eq = (rs1_val == rs2_val);
+    // Reuse ALU comparison outputs for branch decisions.
+    assign branch_eq = alu_eq_unused;
+    assign branch_lt = alu_y[0];
 
     assign branch_taken =
         (opcode == 7'b1100011) &&
         (
             ((funct3 == 3'b000) && branch_eq)  || // BEQ
-            ((funct3 == 3'b001) && !branch_eq)    // BNE
+            ((funct3 == 3'b001) && !branch_eq) || // BNE
+            ((funct3 == 3'b100) && branch_lt)  || // BLT
+            ((funct3 == 3'b101) && !branch_lt) || // BGE
+            ((funct3 == 3'b110) && branch_lt)  || // BLTU
+            ((funct3 == 3'b111) && !branch_lt)    // BGEU
         );
 
     wire [31:0] pc_next;
