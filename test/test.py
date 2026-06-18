@@ -824,6 +824,66 @@ async def subtest_irq_return_uart_rx(dut):
     )
 
 
+
+
+async def subtest_irq_i2c_done(dut):
+    # I2C done IRQ test:
+    #
+    # Main program:
+    #   enable IRQ bit 2 = I2C done
+    #   start one I2C write transaction
+    #   enter WFI
+    #
+    # IRQ handler at 0x40:
+    #   read IRQ_STATUS
+    #   isolate bit 2
+    #   write GPIO = 0x04
+    #
+    # This test is GLS-friendly because it does not use asynchronous UART RX
+    # stimulus. The I2C ACK/NACK input is held constant.
+
+    words = [
+        enc_lui(2, 0x10000),        # x2 = MMIO base
+
+        enc_addi(4, 0, 0x04),       # enable I2C done IRQ
+        enc_sw(4, 2, 0x24),         # IRQ_ENABLE = 0x04
+
+        enc_addi(4, 0, 1),
+        enc_sw(4, 2, 0x1C),         # I2C DIV = 1
+
+        enc_addi(4, 0, 0x80),
+        enc_sw(4, 2, 0x14),         # I2C DATA = 0x80
+
+        enc_addi(4, 0, 0x07),
+        enc_sw(4, 2, 0x10),         # I2C CTRL = START + STOP + WRITE
+
+        WFI,                        # sleep until I2C done IRQ
+    ]
+
+    # IRQ vector at PC 0x40, instruction index 16.
+    while len(words) < 16:
+        words.append(enc_nop())
+
+    words += [
+        enc_lw(4, 2, 0x20),         # IRQ_STATUS
+        enc_andi(4, 4, 0x04),       # isolate I2C done IRQ bit
+        enc_sw(4, 2, 0x00),         # GPIO = 0x04
+        EBREAK,
+    ]
+
+    assert len(words) <= 32
+
+    await run_program_and_check_gpio(
+        dut,
+        name="IRQ I2C done wake",
+        words=words,
+        expected_gpio=0x04,
+        cycles=560,
+        # RX high, SCL high, SDA low -> ACK.
+        run_uio_in=0x06,
+    )
+
+
 # -----------------------------------------------------------------------------
 # Single cocotb entry point
 # -----------------------------------------------------------------------------
@@ -853,6 +913,7 @@ async def test_project(dut):
 
     await subtest_i2c_write_ack(dut)
     await subtest_i2c_write_nack(dut)
+    await subtest_irq_i2c_done(dut)
 
     if gls:
         dut._log.info("GLS mode: skipping UART-RX-driven IRQ subtests; covered in RTL")
