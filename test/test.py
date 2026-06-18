@@ -212,6 +212,19 @@ async def program_sram(dut, words):
         await write_byte(dut, addr, byte)
 
 
+async def release_reset_safe(dut):
+    """Release reset away from the active clock edge.
+
+    RTL simulation tolerates reset release immediately after ClockCycles(),
+    but gate-level simulation can produce X values if reset deassertion is
+    aligned with the active clock edge. The design samples on clk rising edge,
+    so reset is released on the falling edge plus a small delay.
+    """
+    await FallingEdge(dut.clk)
+    await Timer(1, unit="ns")
+    dut.rst_n.value = 1
+
+
 async def reset_and_program(dut, words, run_uio_in=0x0E):
     await start_clock(dut)
 
@@ -246,7 +259,7 @@ async def run_program_and_check_gpio(
     if concurrent_task is not None:
         cocotb.start_soon(concurrent_task)
 
-    dut.rst_n.value = 1
+    await release_reset_safe(dut)
 
     await ClockCycles(dut.clk, cycles)
 
@@ -256,7 +269,12 @@ async def run_program_and_check_gpio(
     await FallingEdge(dut.clk)
     await Timer(1, unit="ns")
 
-    observed = int(dut.uo_out.value)
+    try:
+        observed = int(dut.uo_out.value)
+    except ValueError:
+        dut._log.warning(f"{name}: raw uo_out contains X/Z: {dut.uo_out.value}")
+        raise
+
     dut._log.info(f"{name}: uo_out = 0x{observed:02x}")
 
     assert observed == expected_gpio, (
@@ -477,7 +495,7 @@ async def subtest_uart_tx(dut):
     ]
 
     await reset_and_program(dut, words, run_uio_in=0x0E)
-    dut.rst_n.value = 1
+    await release_reset_safe(dut)
 
     observed = await read_uart_tx_byte(dut, clks_per_bit=8, timeout_cycles=1000)
     dut._log.info(f"UART TX byte = 0x{observed:02x}")
