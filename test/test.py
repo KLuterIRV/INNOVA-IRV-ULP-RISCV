@@ -61,6 +61,18 @@ def enc_slt(rd, rs1, rs2):
 def enc_sltu(rd, rs1, rs2):
     return enc_rtype(rd, rs1, rs2, funct3=0b011, funct7=0b0000000)
 
+
+def enc_sll(rd, rs1, rs2):
+    return enc_rtype(rd, rs1, rs2, funct3=0b001, funct7=0b0000000)
+
+
+def enc_srl(rd, rs1, rs2):
+    return enc_rtype(rd, rs1, rs2, funct3=0b101, funct7=0b0000000)
+
+
+def enc_sra(rd, rs1, rs2):
+    return enc_rtype(rd, rs1, rs2, funct3=0b101, funct7=0b0100000)
+
 def enc_xori(rd, rs1, imm):
     return (
         ((imm & 0xFFF) << 20)
@@ -678,6 +690,55 @@ async def subtest_core_shift_immediates(dut):
         cycles=420,
     )
 
+
+async def subtest_core_shift_registers(dut):
+    # Validate R-type SLL/SRL/SRA.
+    #
+    # x7 accumulates one bit per correct result.
+    # Expected GPIO = 0x07.
+
+    words = [
+        enc_addi(7, 0, 0),          # accumulator
+
+        enc_addi(1, 0, 1),
+        enc_addi(2, 0, 5),
+        enc_sll(3, 1, 2),           # 1 << 5 = 32
+        enc_addi(4, 0, 32),
+        enc_beq(3, 4, 8),
+        enc_jal(0, 8),
+        enc_ori(7, 7, 0x01),
+
+        enc_addi(1, 0, 64),
+        enc_addi(2, 0, 3),
+        enc_srl(3, 1, 2),           # 64 >> 3 = 8
+        enc_addi(4, 0, 8),
+        enc_beq(3, 4, 8),
+        enc_jal(0, 8),
+        enc_ori(7, 7, 0x02),
+
+        enc_addi(1, 0, -16),
+        enc_addi(2, 0, 2),
+        enc_sra(3, 1, 2),           # -16 >>> 2 arithmetic = -4
+        enc_addi(4, 0, -4),
+        enc_beq(3, 4, 8),
+        enc_jal(0, 8),
+        enc_ori(7, 7, 0x04),
+
+        enc_lui(8, 0x10000),
+        enc_sw(7, 8, 0x00),
+        EBREAK,
+    ]
+
+    assert len(words) <= 32
+
+    await run_program_and_check_gpio(
+        dut,
+        name="CORE SLL/SRL/SRA",
+        words=words,
+        expected_gpio=0x07,
+        cycles=460,
+    )
+
 async def subtest_core_branch_jump_regfile(dut):
     words = [
         enc_addi(1, 0, 5),
@@ -1148,6 +1209,7 @@ async def test_project(dut):
     await subtest_core_slt_sltu(dut)
     await subtest_core_compare_branches(dut)
     await subtest_core_shift_immediates(dut)
+    await subtest_core_shift_registers(dut)
     await subtest_core_branch_jump_regfile(dut)
     await subtest_uart_tx(dut)
 

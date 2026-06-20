@@ -231,7 +231,7 @@ module irv_core (
                 endcase
             end
 
-            // OP: ADD / SUB / SLT / SLTU / XOR / OR / AND
+            // OP: ADD / SUB / SLL / SLT / SLTU / XOR / SRL / SRA / OR / AND
             7'b0110011: begin
                 case (funct3)
                     3'b000: begin
@@ -242,9 +242,17 @@ module irv_core (
                         end
                     end
 
+                    3'b001: alu_op = IRV_ALU_SLL;  // SLL
                     3'b010: alu_op = IRV_ALU_SLT;  // SLT
                     3'b011: alu_op = IRV_ALU_SLTU; // SLTU
                     3'b100: alu_op = IRV_ALU_XOR;  // XOR
+                    3'b101: begin
+                        if (funct7 == 7'b0100000) begin
+                            alu_op = IRV_ALU_SRA;  // SRA
+                        end else begin
+                            alu_op = IRV_ALU_SRL;  // SRL
+                        end
+                    end
                     3'b110: alu_op = IRV_ALU_OR;   // OR
                     3'b111: alu_op = IRV_ALU_AND;  // AND
                     default: alu_op = IRV_ALU_ADD;
@@ -421,17 +429,20 @@ module irv_core (
                     end
                 end
 
-                // OP: ADD / SUB / SLT / SLTU / XOR / OR / AND
+                // OP: ADD / SUB / SLL / SLT / SLTU / XOR / SRL / SRA / OR / AND
                 7'b0110011: begin
                     if ((rd != 5'd0) &&
                         (
                             ((funct3 == 3'b000) &&
-                             ((funct7 == 7'b0000000) || (funct7 == 7'b0100000))) ||
-                            ((funct3 == 3'b010) && (funct7 == 7'b0000000)) ||
-                            ((funct3 == 3'b011) && (funct7 == 7'b0000000)) ||
-                            ((funct3 == 3'b100) && (funct7 == 7'b0000000)) ||
-                            ((funct3 == 3'b110) && (funct7 == 7'b0000000)) ||
-                            ((funct3 == 3'b111) && (funct7 == 7'b0000000))
+                             ((funct7 == 7'b0000000) || (funct7 == 7'b0100000))) || // ADD/SUB
+                            ((funct3 == 3'b001) && (funct7 == 7'b0000000)) ||       // SLL
+                            ((funct3 == 3'b010) && (funct7 == 7'b0000000)) ||       // SLT
+                            ((funct3 == 3'b011) && (funct7 == 7'b0000000)) ||       // SLTU
+                            ((funct3 == 3'b100) && (funct7 == 7'b0000000)) ||       // XOR
+                            ((funct3 == 3'b101) &&
+                             ((funct7 == 7'b0000000) || (funct7 == 7'b0100000))) || // SRL/SRA
+                            ((funct3 == 3'b110) && (funct7 == 7'b0000000)) ||       // OR
+                            ((funct3 == 3'b111) && (funct7 == 7'b0000000))          // AND
                         )) begin
                         rd_we    = 1'b1;
                         rd_wdata = alu_y;
