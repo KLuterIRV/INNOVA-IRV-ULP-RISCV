@@ -34,6 +34,7 @@ module irv_decoder (
     output wire [31:0] imm_j,
 
     output wire        is_lui,
+    output wire        is_auipc,
     output wire        is_op_imm,
     output wire        is_op,
     output wire        is_load,
@@ -69,7 +70,7 @@ module irv_decoder (
         1'b0
     };
 
-    // U-type immediate: LUI.
+    // U-type immediate: LUI / AUIPC.
     assign imm_u = {instr[31:12], 12'b0};
 
     // J-type immediate:
@@ -84,6 +85,7 @@ module irv_decoder (
     };
 
     assign is_lui    = (opcode == 7'b0110111);
+    assign is_auipc  = (opcode == 7'b0010111);
     assign is_op_imm = (opcode == 7'b0010011);
     assign is_op     = (opcode == 7'b0110011);
     assign is_load   = (opcode == 7'b0000011);

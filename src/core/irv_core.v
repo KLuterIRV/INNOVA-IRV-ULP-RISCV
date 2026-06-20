@@ -91,6 +91,7 @@ module irv_core (
     wire [31:0] imm_j;
 
     wire is_lui;
+    wire is_auipc;
     wire is_op_imm;
     wire is_op;
     wire is_load;
@@ -118,6 +119,7 @@ module irv_core (
         .imm_j     (imm_j),
 
         .is_lui    (is_lui),
+        .is_auipc  (is_auipc),
         .is_op_imm (is_op_imm),
         .is_op     (is_op),
         .is_load   (is_load),
@@ -130,7 +132,7 @@ module irv_core (
     );
 
     wire unused_decoder_fields;
-    assign unused_decoder_fields = is_lui | is_op_imm | is_op | is_load |
+    assign unused_decoder_fields = is_lui | is_auipc | is_op_imm | is_op | is_load |
                                    is_store | is_branch | is_jal | is_jalr |
                                    is_wfi | (|funct7);
 
@@ -176,18 +178,30 @@ module irv_core (
         IRV_ALU_SRA  = 4'd9;
 
     reg  [3:0]  alu_op;
+    wire [31:0] alu_a;
     wire [31:0] alu_b;
     wire [31:0] alu_y;
     wire        alu_eq_unused;
 
+    // AUIPC uses PC as ALU input A.
+    // All other current ALU users use rs1.
+    assign alu_a = (opcode == 7'b0010111) ? pc : rs1_val;
+
     // OP-IMM/LOAD/JALR use imm_i.
     // STORE uses imm_s.
+    // AUIPC uses imm_u.
     // R-type OP and BRANCH comparisons use rs2.
     //
-    // This lets the ALU ADD path also generate LW/SW MMIO addresses,
-    // avoiding a second 32-bit address adder in the core.
+    // This lets the ALU ADD path generate:
+    //   - OP-IMM results
+    //   - JALR target
+    //   - LW/SW MMIO addresses
+    //   - AUIPC result
+    // without adding extra 32-bit adders.
     wire [31:0] alu_imm_b;
-    assign alu_imm_b = (opcode == 7'b0100011) ? imm_s : imm_i;
+    assign alu_imm_b = (opcode == 7'b0100011) ? imm_s :
+                       (opcode == 7'b0010111) ? imm_u :
+                                                imm_i;
 
     assign alu_b = ((opcode == 7'b0110011) ||
                     (opcode == 7'b1100011)) ? rs2_val : alu_imm_b;
@@ -268,7 +282,7 @@ module irv_core (
 
     irv_alu u_alu (
         .alu_op (alu_op),
-        .a      (rs1_val),
+        .a      (alu_a),
         .b      (alu_b),
         .y      (alu_y),
         .eq     (alu_eq_unused)
@@ -408,6 +422,15 @@ module irv_core (
                     if (rd != 5'd0) begin
                         rd_we    = 1'b1;
                         rd_wdata = imm_u;
+                    end
+                end
+
+                // AUIPC: rd = PC + imm_u.
+                // Reuses the main ALU ADD path.
+                7'b0010111: begin
+                    if (rd != 5'd0) begin
+                        rd_we    = 1'b1;
+                        rd_wdata = alu_y;
                     end
                 end
 

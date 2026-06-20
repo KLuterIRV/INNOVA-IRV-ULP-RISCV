@@ -43,6 +43,10 @@ def enc_lui(rd, imm20):
     return ((imm20 & 0xFFFFF) << 12) | ((rd & 0x1F) << 7) | 0x37
 
 
+def enc_auipc(rd, imm20):
+    return ((imm20 & 0xFFFFF) << 12) | ((rd & 0x1F) << 7) | 0x17
+
+
 def enc_addi(rd, rs1, imm):
     return (
         ((imm & 0xFFF) << 20)
@@ -739,6 +743,37 @@ async def subtest_core_shift_registers(dut):
         cycles=460,
     )
 
+
+async def subtest_core_auipc(dut):
+    # Validate AUIPC without adding a new hardware adder.
+    #
+    # PC map:
+    #   0x00: AUIPC x2, 0x10000 -> x2 = 0x1000_0000, MMIO base
+    #   0x04: NOP
+    #   0x08: AUIPC x4, 0       -> x4 = 0x0000_0008
+    #   0x0C: ADDI  x4, x4, 0x2A -> x4 = 0x32
+    #
+    # GPIO should receive 0x32.
+
+    words = [
+        enc_auipc(2, 0x10000),      # x2 = MMIO base because PC=0 here
+        enc_nop(),
+        enc_auipc(4, 0x00000),      # x4 = current PC = 0x08
+        enc_addi(4, 4, 0x2A),       # x4 = 0x32
+        enc_sw(4, 2, 0x00),         # GPIO = 0x32
+        EBREAK,
+    ]
+
+    assert len(words) <= 32
+
+    await run_program_and_check_gpio(
+        dut,
+        name="CORE AUIPC",
+        words=words,
+        expected_gpio=0x32,
+        cycles=220,
+    )
+
 async def subtest_core_branch_jump_regfile(dut):
     words = [
         enc_addi(1, 0, 5),
@@ -1210,6 +1245,7 @@ async def test_project(dut):
     await subtest_core_compare_branches(dut)
     await subtest_core_shift_immediates(dut)
     await subtest_core_shift_registers(dut)
+    await subtest_core_auipc(dut)
     await subtest_core_branch_jump_regfile(dut)
     await subtest_uart_tx(dut)
 
