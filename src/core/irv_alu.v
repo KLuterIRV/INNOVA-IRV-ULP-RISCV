@@ -46,26 +46,51 @@ module irv_alu (
         ALU_SRA  = 4'd9;
 
     // ---------------------------------------------------------------------
-    // Shared subtract/compare path
+    // Shared add/subtract/compare path
     // ---------------------------------------------------------------------
     //
-    // SUB, SLT, SLTU and EQ all derive from one subtraction path.
-    // This avoids inferring separate equality and less-than comparators.
+    // ADD and SUB are implemented with one configurable adder:
+    //
+    //   ADD: a + b
+    //   SUB: a + (~b) + 1
+    //
+    // The same subtraction result is reused for:
+    //   - SUB
+    //   - SLT
+    //   - SLTU
+    //   - BEQ/BNE equality check
+    //
+    // This avoids independent adders/comparators for add, subtract and less-than.
 
-    wire [32:0] sub_ext;
-    wire [31:0] sub_y;
+    wire        addsub_sub;
+    wire [31:0] addsub_b;
+    wire [32:0] addsub_ext;
+    wire [31:0] addsub_y;
+    wire        addsub_carry;
     wire        sub_borrow;
     wire        slt_signed;
     wire        slt_unsigned;
 
-    assign sub_ext    = {1'b0, a} - {1'b0, b};
-    assign sub_y      = sub_ext[31:0];
-    assign sub_borrow = sub_ext[32];
+    assign addsub_sub =
+        (alu_op == ALU_SUB)  ||
+        (alu_op == ALU_SLT)  ||
+        (alu_op == ALU_SLTU);
 
-    assign eq = (sub_y == 32'd0);
+    assign addsub_b     = b ^ {32{addsub_sub}};
+    assign addsub_ext   = {1'b0, a} + {1'b0, addsub_b} + {32'd0, addsub_sub};
+    assign addsub_y     = addsub_ext[31:0];
+    assign addsub_carry = addsub_ext[32];
+
+    // For a - b implemented as a + ~b + 1:
+    //   carry_out = 1 -> no borrow
+    //   carry_out = 0 -> borrow
+    assign sub_borrow = ~addsub_carry;
+
+    // EQ is meaningful when the core selects SUB for BEQ/BNE.
+    assign eq = (addsub_y == 32'd0);
 
     assign slt_unsigned = sub_borrow;
-    assign slt_signed   = (a[31] != b[31]) ? a[31] : sub_y[31];
+    assign slt_signed   = (a[31] != b[31]) ? a[31] : addsub_y[31];
 
     // ---------------------------------------------------------------------
     // Shared configurable barrel shifter
@@ -128,8 +153,8 @@ module irv_alu (
 
     always @(*) begin
         case (alu_op)
-            ALU_ADD:  y = a + b;
-            ALU_SUB:  y = sub_y;
+            ALU_ADD:  y = addsub_y;
+            ALU_SUB:  y = addsub_y;
             ALU_AND:  y = a & b;
             ALU_OR:   y = a | b;
             ALU_XOR:  y = a ^ b;

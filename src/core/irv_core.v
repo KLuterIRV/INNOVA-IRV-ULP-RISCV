@@ -218,14 +218,16 @@ module irv_core (
                 endcase
             end
 
-            // BRANCH: use ALU compare paths for BLT/BGE/BLTU/BGEU.
+            // BRANCH: use ALU compare paths for all branch conditions.
             7'b1100011: begin
                 case (funct3)
+                    3'b000,
+                    3'b001: alu_op = IRV_ALU_SUB;  // BEQ / BNE
                     3'b100,
                     3'b101: alu_op = IRV_ALU_SLT;  // BLT / BGE
                     3'b110,
                     3'b111: alu_op = IRV_ALU_SLTU; // BLTU / BGEU
-                    default: alu_op = IRV_ALU_ADD;
+                    default: alu_op = IRV_ALU_SUB;
                 endcase
             end
 
