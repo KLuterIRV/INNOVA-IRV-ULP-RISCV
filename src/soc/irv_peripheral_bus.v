@@ -72,18 +72,28 @@ module irv_peripheral_bus (
     output wire        i2c0_div_we
 );
 
-    localparam [31:0] ADDR_GPIO0_OUT    = 32'h1000_0000;
-    localparam [31:0] ADDR_UART0_TX     = 32'h1000_0004;
-    localparam [31:0] ADDR_UART0_STATUS = 32'h1000_0008;
-    localparam [31:0] ADDR_UART0_RX     = 32'h1000_000C;
+    // Decode only the upper MMIO page once, then compare 8-bit offsets.
+    // This avoids repeating full 32-bit address comparators for every register.
+    localparam [23:0] MMIO_PAGE = 24'h1000_00;
 
-    localparam [31:0] ADDR_I2C0_CTRL    = 32'h1000_0010;
-    localparam [31:0] ADDR_I2C0_DATA    = 32'h1000_0014;
-    localparam [31:0] ADDR_I2C0_STATUS  = 32'h1000_0018;
-    localparam [31:0] ADDR_I2C0_DIV     = 32'h1000_001C;
+    localparam [7:0] OFF_GPIO0_OUT    = 8'h00;
+    localparam [7:0] OFF_UART0_TX     = 8'h04;
+    localparam [7:0] OFF_UART0_STATUS = 8'h08;
+    localparam [7:0] OFF_UART0_RX     = 8'h0C;
 
-    localparam [31:0] ADDR_IRQ_STATUS   = 32'h1000_0020;
-    localparam [31:0] ADDR_IRQ_ENABLE   = 32'h1000_0024;
+    localparam [7:0] OFF_I2C0_CTRL    = 8'h10;
+    localparam [7:0] OFF_I2C0_DATA    = 8'h14;
+    localparam [7:0] OFF_I2C0_STATUS  = 8'h18;
+    localparam [7:0] OFF_I2C0_DIV     = 8'h1C;
+
+    localparam [7:0] OFF_IRQ_STATUS   = 8'h20;
+    localparam [7:0] OFF_IRQ_ENABLE   = 8'h24;
+
+    wire       addr_is_mmio;
+    wire [7:0] addr_off;
+
+    assign addr_is_mmio = (addr[31:8] == MMIO_PAGE);
+    assign addr_off     = addr[7:0];
 
     reg [2:0] irq_enable_reg;
     assign irq_enable = irq_enable_reg;
@@ -91,7 +101,7 @@ module irv_peripheral_bus (
     always @(posedge clk) begin
         if (rst) begin
             irq_enable_reg <= 3'b000;
-        end else if (store_en && !stall && (addr == ADDR_IRQ_ENABLE)) begin
+        end else if (store_en && !stall && (addr_is_mmio && (addr_off == OFF_IRQ_ENABLE))) begin
             irq_enable_reg <= wdata[2:0];
         end
     end
@@ -112,60 +122,60 @@ module irv_peripheral_bus (
     assign stall =
         store_en &&
         (
-            ((addr == ADDR_UART0_TX) && uart0_tx_busy) ||
-            (((addr == ADDR_I2C0_CTRL) ||
-              (addr == ADDR_I2C0_DIV)) && i2c0_busy)
+            ((addr_is_mmio && (addr_off == OFF_UART0_TX)) && uart0_tx_busy) ||
+            (((addr_is_mmio && (addr_off == OFF_I2C0_CTRL)) ||
+              (addr_is_mmio && (addr_off == OFF_I2C0_DIV))) && i2c0_busy)
         );
 
     // ---------------------------------------------------------------------
     // Write decode
     // ---------------------------------------------------------------------
 
-    assign gpio0_we    = store_en && !stall && (addr == ADDR_GPIO0_OUT);
+    assign gpio0_we    = store_en && !stall && (addr_is_mmio && (addr_off == OFF_GPIO0_OUT));
     assign gpio0_wdata = wdata[7:0];
 
-    assign uart0_tx_start = store_en && !stall && (addr == ADDR_UART0_TX);
+    assign uart0_tx_start = store_en && !stall && (addr_is_mmio && (addr_off == OFF_UART0_TX));
     assign uart0_tx_data  = wdata[7:0];
 
-    assign i2c0_ctrl_we      = store_en && !stall && (addr == ADDR_I2C0_CTRL);
+    assign i2c0_ctrl_we      = store_en && !stall && (addr_is_mmio && (addr_off == OFF_I2C0_CTRL));
     assign i2c0_ctrl_wr_data = wdata[7:0];
 
-    assign i2c0_data_we      = store_en && !stall && (addr == ADDR_I2C0_DATA);
+    assign i2c0_data_we      = store_en && !stall && (addr_is_mmio && (addr_off == OFF_I2C0_DATA));
     assign i2c0_data_wr_data = wdata[7:0];
 
-    assign i2c0_div_we       = store_en && !stall && (addr == ADDR_I2C0_DIV);
+    assign i2c0_div_we       = store_en && !stall && (addr_is_mmio && (addr_off == OFF_I2C0_DIV));
     assign i2c0_div_wr_data  = wdata[7:0];
 
     // Reading UART0 RX data consumes the byte.
-    assign uart0_rx_clear = load_en && (addr == ADDR_UART0_RX);
+    assign uart0_rx_clear = load_en && (addr_is_mmio && (addr_off == OFF_UART0_RX));
 
     // ---------------------------------------------------------------------
     // Read decode
     // ---------------------------------------------------------------------
 
     always @(*) begin
-        case (addr)
-            ADDR_UART0_STATUS: begin
+        case (addr_is_mmio ? addr_off : 8'hFF)
+            OFF_UART0_STATUS: begin
                 rdata = {29'd0, uart0_rx_overrun, uart0_rx_valid, uart0_tx_busy};
             end
 
-            ADDR_UART0_RX: begin
+            OFF_UART0_RX: begin
                 rdata = {24'd0, uart0_rx_data};
             end
 
-            ADDR_I2C0_DATA: begin
+            OFF_I2C0_DATA: begin
                 rdata = {24'd0, i2c0_data_rd_data};
             end
 
-            ADDR_I2C0_STATUS: begin
+            OFF_I2C0_STATUS: begin
                 rdata = {24'd0, i2c0_status};
             end
 
-            ADDR_IRQ_STATUS: begin
+            OFF_IRQ_STATUS: begin
                 rdata = {29'd0, irq_status};
             end
 
-            ADDR_IRQ_ENABLE: begin
+            OFF_IRQ_ENABLE: begin
                 rdata = {29'd0, irq_enable_reg};
             end
 

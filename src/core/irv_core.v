@@ -180,10 +180,17 @@ module irv_core (
     wire [31:0] alu_y;
     wire        alu_eq_unused;
 
-    // OP-IMM uses the sign-extended immediate.
+    // OP-IMM/LOAD/JALR use imm_i.
+    // STORE uses imm_s.
     // R-type OP and BRANCH comparisons use rs2.
+    //
+    // This lets the ALU ADD path also generate LW/SW MMIO addresses,
+    // avoiding a second 32-bit address adder in the core.
+    wire [31:0] alu_imm_b;
+    assign alu_imm_b = (opcode == 7'b0100011) ? imm_s : imm_i;
+
     assign alu_b = ((opcode == 7'b0110011) ||
-                    (opcode == 7'b1100011)) ? rs2_val : imm_i;
+                    (opcode == 7'b1100011)) ? rs2_val : alu_imm_b;
 
     always @(*) begin
         alu_op = IRV_ALU_ADD;
@@ -358,11 +365,9 @@ module irv_core (
                              (funct3 == 3'b010);
 
     // ULP/area optimization:
-    // Use one address adder for both LW and SW MMIO accesses.
-    wire [31:0] periph_addr_imm;
-    assign periph_addr_imm = periph_store_en ? imm_s : imm_i;
-
-    assign periph_addr  = rs1_val + periph_addr_imm;
+    // Reuse the ALU ADD path for LW/SW MMIO address generation.
+    // For LOAD, alu_b = imm_i. For STORE, alu_b = imm_s.
+    assign periph_addr  = alu_y;
     assign periph_wdata = rs2_val;
 
     // ---------------------------------------------------------------------

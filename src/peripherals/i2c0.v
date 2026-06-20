@@ -96,16 +96,6 @@ module i2c0 (
     assign unused_i2c0_reserved_bits = |ctrl_wr_data[7:5];
 
     // ---------------------------------------------------------------------
-    // Reserved control bits
-    // ---------------------------------------------------------------------
-    //
-    // ctrl_wr_data[7:5] are intentionally reserved for future I2C commands.
-    // This sink prevents unused-signal lint warnings without changing logic.
-
-    wire unused_i2c0_ctrl_reserved;
-    assign unused_i2c0_ctrl_reserved = |ctrl_wr_data[7:5];
-
-    // ---------------------------------------------------------------------
     // FSM
     // ---------------------------------------------------------------------
 
@@ -134,7 +124,7 @@ module i2c0 (
         S_DONE        = 4'd14;
 
     reg [3:0] state;
-    reg [15:0] clk_count;
+    reg [7:0]  clk_count;
     reg [2:0] bit_index;
     reg [7:0] shifter;
 
@@ -145,7 +135,7 @@ module i2c0 (
 
     wire tick;
 
-    assign tick = (clk_count == {8'd0, div_reg});
+    assign tick = (clk_count == div_reg);
 
     always @(posedge clk) begin
         if (rst) begin
@@ -162,7 +152,7 @@ module i2c0 (
             sda_drive_low      <= 1'b0;
 
             state              <= S_IDLE;
-            clk_count          <= 16'd0;
+            clk_count          <= 8'd0;
             bit_index          <= 3'd0;
             shifter            <= 8'd0;
 
@@ -191,7 +181,7 @@ module i2c0 (
                 ack_error          <= 1'b0;
                 rx_valid           <= 1'b0;
 
-                clk_count          <= 16'd0;
+                clk_count          <= 8'd0;
                 bit_index          <= 3'd7;
                 shifter            <= data_wr_data;
 
@@ -211,7 +201,7 @@ module i2c0 (
             end else begin
                 if (busy) begin
                     if (tick) begin
-                        clk_count <= 16'd0;
+                        clk_count <= 8'd0;
 
                         case (state)
 
@@ -346,7 +336,7 @@ module i2c0 (
 
                         endcase
                     end else begin
-                        clk_count <= clk_count + 16'd1;
+                        clk_count <= clk_count + 8'd1;
                     end
                 end
             end

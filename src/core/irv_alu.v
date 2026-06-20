@@ -45,7 +45,27 @@ module irv_alu (
         ALU_SRL  = 4'd8,
         ALU_SRA  = 4'd9;
 
-    assign eq = (a == b);
+    // ---------------------------------------------------------------------
+    // Shared subtract/compare path
+    // ---------------------------------------------------------------------
+    //
+    // SUB, SLT, SLTU and EQ all derive from one subtraction path.
+    // This avoids inferring separate equality and less-than comparators.
+
+    wire [32:0] sub_ext;
+    wire [31:0] sub_y;
+    wire        sub_borrow;
+    wire        slt_signed;
+    wire        slt_unsigned;
+
+    assign sub_ext    = {1'b0, a} - {1'b0, b};
+    assign sub_y      = sub_ext[31:0];
+    assign sub_borrow = sub_ext[32];
+
+    assign eq = (sub_y == 32'd0);
+
+    assign slt_unsigned = sub_borrow;
+    assign slt_signed   = (a[31] != b[31]) ? a[31] : sub_y[31];
 
     // ---------------------------------------------------------------------
     // Shared configurable barrel shifter
@@ -108,13 +128,13 @@ module irv_alu (
 
     always @(*) begin
         case (alu_op)
-            ALU_ADD: y = a + b;
-            ALU_SUB: y = a - b;
+            ALU_ADD:  y = a + b;
+            ALU_SUB:  y = sub_y;
             ALU_AND:  y = a & b;
             ALU_OR:   y = a | b;
             ALU_XOR:  y = a ^ b;
-            ALU_SLT:  y = ($signed(a) < $signed(b)) ? 32'd1 : 32'd0;
-            ALU_SLTU: y = (a < b) ? 32'd1 : 32'd0;
+            ALU_SLT:  y = slt_signed ? 32'd1 : 32'd0;
+            ALU_SLTU: y = slt_unsigned ? 32'd1 : 32'd0;
             ALU_SLL,
             ALU_SRL,
             ALU_SRA:  y = shifter_y;
