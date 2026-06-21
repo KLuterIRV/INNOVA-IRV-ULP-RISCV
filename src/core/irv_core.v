@@ -63,14 +63,18 @@ module irv_core (
         S_HALT    = 3'd4,
         S_SLEEP   = 3'd5;
 
-    reg [2:0]  state;
-    reg [31:0] pc;
-    reg        halted_r;
+    localparam integer PC_WIDTH = 7;
+
+    reg [2:0]            state;
+    reg [PC_WIDTH-1:0]   pc;
+    reg                  halted_r;
 
     wire [31:0] instr_reg;
+    wire [31:0] pc_ext;
 
+    assign pc_ext      = {{(32-PC_WIDTH){1'b0}}, pc};
     assign halted      = halted_r;
-    assign pc_debug    = pc;
+    assign pc_debug    = pc_ext;
     assign instr_debug = instr_reg;
 
     // ---------------------------------------------------------------------
@@ -185,7 +189,7 @@ module irv_core (
 
     // AUIPC uses PC as ALU input A.
     // All other current ALU users use rs1.
-    assign alu_a = (opcode == 7'b0010111) ? pc : rs1_val;
+    assign alu_a = (opcode == 7'b0010111) ? pc_ext : rs1_val;
 
     // OP-IMM/LOAD/JALR use imm_i.
     // STORE uses imm_s.
@@ -311,7 +315,7 @@ module irv_core (
             ((funct3 == 3'b111) && !branch_lt)    // BGEU
         );
 
-    wire [31:0] pc_next;
+    wire [PC_WIDTH-1:0] pc_next;
     wire        pc_we;
     wire        pc_halt_req;
 
@@ -320,7 +324,9 @@ module irv_core (
     // an extra 32-bit adder: JALR target = rs1 + imm_i.
     assign jalr_target = alu_y;
 
-    irv_pc_ctrl u_pc_ctrl (
+    irv_pc_ctrl #(
+        .PC_WIDTH    (PC_WIDTH)
+    ) u_pc_ctrl (
         .pc           (pc),
 
         .imm_b        (imm_b),
@@ -461,7 +467,7 @@ module irv_core (
         if ((state == S_SLEEP) && irq_any) begin
             rd_we    = 1'b1;
             rd_waddr = 5'd1;
-            rd_wdata = pc + 32'd4;
+            rd_wdata = pc_ext + 32'd4;
         end else if ((state == S_EXEC) &&
             !is_ebreak &&
             !is_wfi &&
@@ -536,7 +542,7 @@ module irv_core (
                 7'b1101111: begin
                     if (rd != 5'd0) begin
                         rd_we    = 1'b1;
-                        rd_wdata = pc + 32'd4;
+                        rd_wdata = pc_ext + 32'd4;
                     end
                 end
 
@@ -544,7 +550,7 @@ module irv_core (
                 7'b1100111: begin
                     if ((funct3 == 3'b000) && (rd != 5'd0)) begin
                         rd_we    = 1'b1;
-                        rd_wdata = pc + 32'd4;
+                        rd_wdata = pc_ext + 32'd4;
                     end
                 end
 
@@ -564,7 +570,7 @@ module irv_core (
     always @(posedge clk) begin
         if (rst) begin
             state    <= S_ADDR_LO;
-            pc       <= 32'd0;
+            pc       <= {PC_WIDTH{1'b0}};
             halted_r <= 1'b0;
         end else begin
             case (state)
@@ -605,7 +611,7 @@ module irv_core (
 
                 S_SLEEP: begin
                     if (irq_any) begin
-                        pc    <= IRQ_VECTOR;
+                        pc    <= IRQ_VECTOR[PC_WIDTH-1:0];
                         state <= S_ADDR_LO;
                     end else begin
                         state <= S_SLEEP;

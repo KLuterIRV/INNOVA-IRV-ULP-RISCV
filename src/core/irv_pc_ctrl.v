@@ -18,8 +18,10 @@
 //   This avoids instantiating extra 32-bit adders.
 // -----------------------------------------------------------------------------
 
-module irv_pc_ctrl (
-    input  wire [31:0] pc,
+module irv_pc_ctrl #(
+    parameter integer PC_WIDTH = 7
+) (
+    input  wire [PC_WIDTH-1:0] pc,
 
     input  wire [31:0] imm_b,
     input  wire [31:0] imm_j,
@@ -32,9 +34,9 @@ module irv_pc_ctrl (
     input  wire        branch_taken,
     input  wire        stall,
 
-    output reg  [31:0] pc_next,
-    output wire        pc_we,
-    output wire        halt_req
+    output reg  [PC_WIDTH-1:0] pc_next,
+    output wire                pc_we,
+    output wire                halt_req
 );
 
     assign halt_req = is_ebreak;
@@ -49,17 +51,24 @@ module irv_pc_ctrl (
     wire branch_selected;
     assign branch_selected = is_branch && branch_taken;
 
-    wire [31:0] pc_offset;
-    assign pc_offset = is_jal          ? imm_j :
-                       branch_selected ? imm_b :
-                                         32'd4;
+    // TinyTapeout program memory is small, so the physical PC only stores the
+    // implemented low byte-address bits. Branch/JAL offsets naturally wrap
+    // modulo the implemented program memory size.
+    wire [PC_WIDTH-1:0] pc_plus4_offset;
+    wire [PC_WIDTH-1:0] pc_offset;
+    wire [PC_WIDTH-1:0] pc_plus_offset;
 
-    wire [31:0] pc_plus_offset;
+    assign pc_plus4_offset = {{(PC_WIDTH-3){1'b0}}, 3'b100};
+
+    assign pc_offset = is_jal          ? imm_j[PC_WIDTH-1:0] :
+                       branch_selected ? imm_b[PC_WIDTH-1:0] :
+                                         pc_plus4_offset;
+
     assign pc_plus_offset = pc + pc_offset;
 
     always @(*) begin
         if (is_jalr) begin
-            pc_next = {jalr_target[31:1], 1'b0};
+            pc_next = {jalr_target[PC_WIDTH-1:1], 1'b0};
         end else begin
             pc_next = pc_plus_offset;
         end
