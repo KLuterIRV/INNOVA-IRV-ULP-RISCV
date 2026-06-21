@@ -51,9 +51,6 @@ module irv_pc_ctrl #(
     wire branch_selected;
     assign branch_selected = is_branch && branch_taken;
 
-    // TinyTapeout program memory is small, so the physical PC only stores the
-    // implemented low byte-address bits. Branch/JAL offsets naturally wrap
-    // modulo the implemented program memory size.
     wire [PC_WIDTH-1:0] pc_plus4_offset;
     wire [PC_WIDTH-1:0] pc_offset;
     wire [PC_WIDTH-1:0] pc_plus_offset;
