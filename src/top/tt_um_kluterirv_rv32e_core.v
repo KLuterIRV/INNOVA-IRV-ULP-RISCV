@@ -22,20 +22,45 @@ module tt_um_kluterirv_rv32e_core (
     assign boot_mode = rst;
 
     // Boot/programming interface while rst_n = 0:
-    //   ui_in[0]   = write enable
-    //   ui_in[7:1] = byte address 0..127
-    //   uio_in     = byte data
+    //
+    // The 128x16 SRAM stores 256 bytes, so byte addressing requires 8 bits.
+    // TinyTapeout exposes ui_in[7:1] plus uio_in[7:0] during reset. To keep
+    // an 8-bit data path and a write-enable, the boot address MSB is latched
+    // in a non-write phase:
+    //
+    //   phase A, latch addr[7]:
+    //     ui_in[0]   = 0
+    //     ui_in[7:1] = addr[6:0]
+    //     uio_in[0]  = addr[7]
+    //     clk pulse
+    //
+    //   phase B, write byte:
+    //     ui_in[0]   = 1
+    //     ui_in[7:1] = addr[6:0]
+    //     uio_in     = byte data
+    //     clk pulse
+    //
+    // Normal reset keeps ui_in[0] = 0, so SRAM is preserved.
     wire       boot_we;
-    wire [6:0] boot_byte_addr;
+    reg        boot_addr_msb;
+    wire [7:0] boot_byte_addr;
 
     assign boot_we        = ui_in[0];
-    assign boot_byte_addr = ui_in[7:1];
+    assign boot_byte_addr = {boot_addr_msb, ui_in[7:1]};
+
+    always @(posedge clk) begin
+        if (!boot_mode) begin
+            boot_addr_msb <= 1'b0;
+        end else if (!boot_we) begin
+            boot_addr_msb <= uio_in[0];
+        end
+    end
 
     // ---------------------------------------------------------------------
     // Core <-> instruction memory interface
     // ---------------------------------------------------------------------
 
-    wire [5:0]  imem_addr;
+    wire [6:0]  imem_addr;
     wire [15:0] imem_rdata;
 
     // ---------------------------------------------------------------------
@@ -97,7 +122,7 @@ module tt_um_kluterirv_rv32e_core (
     // SRAM wrapper
     // ---------------------------------------------------------------------
 
-    sram64x16 u_sram64x16 (
+    sram128x16 u_sram128x16 (
         .clk             (clk),
 
         .boot_mode       (boot_mode),

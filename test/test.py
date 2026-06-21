@@ -371,6 +371,15 @@ async def start_clock(dut):
 
 
 async def write_byte(dut, addr, data):
+    # 256-byte boot protocol:
+    # phase A: latch addr[7] while boot_we=0
+    # phase B: write data while boot_we=1
+    addr = addr & 0xFF
+
+    dut.ui_in.value = ((addr & 0x7F) << 1)
+    dut.uio_in.value = (addr >> 7) & 0x01
+    await ClockCycles(dut.clk, 1)
+
     dut.ui_in.value = ((addr & 0x7F) << 1) | 1
     dut.uio_in.value = data & 0xFF
     await ClockCycles(dut.clk, 1)
@@ -385,7 +394,7 @@ async def program_sram(dut, words):
     for word in words:
         program += word_to_bytes(word)
 
-    assert len(program) <= 128, f"Program too large for 128-byte SRAM: {len(program)} bytes"
+    assert len(program) <= 256, f"Program too large for 256-byte SRAM: {len(program)} bytes"
 
     for addr, byte in enumerate(program):
         await write_byte(dut, addr, byte)

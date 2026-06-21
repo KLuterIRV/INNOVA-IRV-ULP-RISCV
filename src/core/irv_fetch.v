@@ -23,7 +23,7 @@ module irv_fetch (
     input  wire        clk,
     input  wire        rst,
 
-    input  wire [6:0]  pc,
+    input  wire [7:0]  pc,
 
     input  wire        fetch_addr_lo,
     input  wire        fetch_cap_lo,
@@ -31,20 +31,21 @@ module irv_fetch (
 
     input  wire [15:0] sram_rhalf,
 
-    output reg  [5:0]  sram_addr,
+    output reg  [6:0]  sram_addr,
     output reg  [31:0] instr
 );
 
-    wire [5:0] pc_half_addr;
-    wire [5:0] pc_half_addr_hi;
+    wire [6:0] pc_half_addr;
+    wire [6:0] pc_half_addr_hi;
 
-    assign pc_half_addr    = pc[6:1];
-    assign pc_half_addr_hi = pc[6:1] + 6'd1;
+    assign pc_half_addr    = pc[7:1];
+    assign pc_half_addr_hi = pc[7:1] + 7'd1;
 
-    // Current SRAM capacity uses PC bits [6:1].
+    // Current SRAM capacity uses PC bits [7:1].
     // pc[0] is ignored because instructions are halfword-aligned.
     wire unused_pc_bit0;
     assign unused_pc_bit0 = pc[0];
+
 
     reg [15:0] instr_lo;
 

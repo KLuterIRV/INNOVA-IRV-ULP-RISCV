@@ -19,7 +19,7 @@
 // -----------------------------------------------------------------------------
 
 module irv_pc_ctrl #(
-    parameter integer PC_WIDTH = 7
+    parameter integer PC_WIDTH = 8
 ) (
     input  wire [PC_WIDTH-1:0] pc,
 

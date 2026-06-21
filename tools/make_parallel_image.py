@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Create a 128-byte parallel boot image for the INNOVA IRV TinyTapeout core.
+Create a 256-byte parallel boot image for the INNOVA IRV TinyTapeout core.
 
 Input:
     Text file with one 32-bit RV32 instruction per line, in hexadecimal.
@@ -12,14 +12,14 @@ Example input:
     10500073
 
 Output:
-    Raw 128-byte binary image, little-endian per 32-bit instruction.
+    Raw 256-byte binary image, little-endian per 32-bit instruction.
 
 Usage:
     python3 tools/make_parallel_image.py program.hex program_128b.bin
 
 Notes:
-    - Maximum program size is 32 RV32 instructions.
-    - The output is always exactly 128 bytes.
+    - Maximum program size is 64 RV32 instructions.
+    - The output is always exactly 256 bytes.
     - Empty lines and comments starting with # are ignored.
 """
 
@@ -28,7 +28,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-IMAGE_SIZE_BYTES = 128
+IMAGE_SIZE_BYTES = 256
 MAX_WORDS = IMAGE_SIZE_BYTES // 4
 
 
@@ -71,9 +71,9 @@ def words_to_image(words: list[int]) -> bytes:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Create a 128-byte parallel boot image for INNOVA IRV.")
+    parser = argparse.ArgumentParser(description="Create a 256-byte parallel boot image for INNOVA IRV.")
     parser.add_argument("input_hex", type=Path, help="Input text file with 32-bit hex instructions")
-    parser.add_argument("output_bin", type=Path, help="Output raw 128-byte boot image")
+    parser.add_argument("output_bin", type=Path, help="Output raw 256-byte boot image")
     parser.add_argument("--dump", action="store_true", help="Print address/data byte table")
     args = parser.parse_args()
     words = parse_hex_words(args.input_hex)

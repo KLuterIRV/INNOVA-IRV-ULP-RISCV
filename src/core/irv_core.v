@@ -28,7 +28,7 @@ module irv_core (
     input  wire        rst,
 
     // Instruction memory, 16-bit halfword interface.
-    output wire [5:0]  imem_addr,
+    output wire [6:0]  imem_addr,
     input  wire [15:0] imem_rdata,
 
     // Peripheral/MMIO bus.
@@ -63,7 +63,7 @@ module irv_core (
         S_HALT    = 3'd4,
         S_SLEEP   = 3'd5;
 
-    localparam integer PC_WIDTH = 7;
+    localparam integer PC_WIDTH = 8;
 
     reg [2:0]            state;
     reg [PC_WIDTH-1:0]   pc;
@@ -315,7 +315,7 @@ module irv_core (
             ((funct3 == 3'b111) && !branch_lt)    // BGEU
         );
 
-    wire [PC_WIDTH-1:0] pc_next;
+        wire [PC_WIDTH-1:0] pc_next;
     wire        pc_we;
     wire        pc_halt_req;
 

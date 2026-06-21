@@ -16,11 +16,11 @@ PROJECT_SOURCES = \
 	core/irv_fetch.v \
 	core/irv_pc_ctrl.v \
 	soc/irv_peripheral_bus.v \
-	mem/sram64x16.v \
+	mem/sram128x16.v \
 	peripherals/gpio0.v \
 	peripherals/uart0.v \
 	peripherals/i2c0.v \
-	macro_blackboxes/gf180mcu_fd_ip_sram__sram64x8m8wm1_blackbox.v
+	macro_blackboxes/gf180mcu_fd_ip_sram__sram128x8m8wm1_blackbox.v
 
 ifneq ($(GATES),yes)
 
@@ -44,7 +44,7 @@ VERILOG_SOURCES += $(PWD)/gate_level_netlist.v
 VERILOG_SOURCES += $(PWD)/models/gf180/gf180mcu_fd_sc_mcu7t5v0_simple_gl.v
 
 # SRAM macro behavioral model.
-VERILOG_SOURCES += $(SRC_DIR)/macro_blackboxes/gf180mcu_fd_ip_sram__sram64x8m8wm1_blackbox.v
+VERILOG_SOURCES += $(SRC_DIR)/macro_blackboxes/gf180mcu_fd_ip_sram__sram128x8m8wm1_blackbox.v
 
 endif
 
