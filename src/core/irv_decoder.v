@@ -98,7 +98,11 @@ module irv_decoder (
     // In this minimal core it is used as sleep-until-interrupt.
     assign is_wfi    = (instr == 32'h1050_0073);
 
-    assign is_ebreak = (instr == 32'h0010_0073);
+    // Minimal system trap handling.
+    // ECALL and EBREAK both request halt in this tiny core.
+    assign is_ebreak =
+        (instr == 32'h0000_0073) || // ECALL
+        (instr == 32'h0010_0073);   // EBREAK
 
 endmodule
 

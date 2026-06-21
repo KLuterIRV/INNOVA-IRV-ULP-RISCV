@@ -170,6 +170,46 @@ def enc_lw(rd, rs1, imm):
     )
 
 
+
+def enc_lb(rd, rs1, imm):
+    return (
+        ((imm & 0xFFF) << 20)
+        | ((rs1 & 0x1F) << 15)
+        | (0b000 << 12)
+        | ((rd & 0x1F) << 7)
+        | 0x03
+    )
+
+
+def enc_lh(rd, rs1, imm):
+    return (
+        ((imm & 0xFFF) << 20)
+        | ((rs1 & 0x1F) << 15)
+        | (0b001 << 12)
+        | ((rd & 0x1F) << 7)
+        | 0x03
+    )
+
+
+def enc_lbu(rd, rs1, imm):
+    return (
+        ((imm & 0xFFF) << 20)
+        | ((rs1 & 0x1F) << 15)
+        | (0b100 << 12)
+        | ((rd & 0x1F) << 7)
+        | 0x03
+    )
+
+
+def enc_lhu(rd, rs1, imm):
+    return (
+        ((imm & 0xFFF) << 20)
+        | ((rs1 & 0x1F) << 15)
+        | (0b101 << 12)
+        | ((rd & 0x1F) << 7)
+        | 0x03
+    )
+
 def enc_rtype(rd, rs1, rs2, funct3, funct7):
     return (
         ((funct7 & 0x7F) << 25)
@@ -215,6 +255,29 @@ def enc_sw(rs2, rs1, imm):
         | 0x23
     )
 
+
+
+def enc_store(rs2, rs1, imm, funct3):
+    imm12 = imm & 0xFFF
+    imm_11_5 = (imm12 >> 5) & 0x7F
+    imm_4_0 = imm12 & 0x1F
+
+    return (
+        (imm_11_5 << 25)
+        | ((rs2 & 0x1F) << 20)
+        | ((rs1 & 0x1F) << 15)
+        | ((funct3 & 0x7) << 12)
+        | (imm_4_0 << 7)
+        | 0x23
+    )
+
+
+def enc_sb(rs2, rs1, imm):
+    return enc_store(rs2, rs1, imm, funct3=0b000)
+
+
+def enc_sh(rs2, rs1, imm):
+    return enc_store(rs2, rs1, imm, funct3=0b001)
 
 def enc_branch(rs1, rs2, offset, funct3):
     imm = offset & 0x1FFF
@@ -774,6 +837,63 @@ async def subtest_core_auipc(dut):
         cycles=220,
     )
 
+
+async def subtest_core_byte_half_load_store(dut):
+    # Validate RV32I byte/halfword MMIO load/store decode:
+    #   SB, SH, LB, LH, LBU, LHU.
+    #
+    # IRQ_ENABLE at 0x1000_0024 is used as a small readable/writable MMIO
+    # register. Only low bits are implemented, which is enough to verify that
+    # the new access sizes reach the peripheral bus and load formatter.
+
+    words = [
+        enc_lui(2, 0x10000),        # x2 = MMIO base
+        enc_addi(7, 0, 0),          # x7 = accumulator
+
+        enc_addi(1, 0, 5),
+        enc_sb(1, 2, 0x24),         # IRQ_ENABLE = 5
+        enc_lbu(3, 2, 0x24),
+        enc_addi(4, 0, 5),
+        enc_beq(3, 4, 8),
+        enc_jal(0, 8),
+        enc_ori(7, 7, 0x01),
+
+        enc_addi(1, 0, 3),
+        enc_sh(1, 2, 0x24),         # IRQ_ENABLE = 3
+        enc_lh(3, 2, 0x24),
+        enc_addi(4, 0, 3),
+        enc_beq(3, 4, 8),
+        enc_jal(0, 8),
+        enc_ori(7, 7, 0x02),
+
+        enc_addi(1, 0, 7),
+        enc_sw(1, 2, 0x24),         # IRQ_ENABLE = 7
+        enc_lb(3, 2, 0x24),
+        enc_addi(4, 0, 7),
+        enc_beq(3, 4, 8),
+        enc_jal(0, 8),
+        enc_ori(7, 7, 0x04),
+
+        enc_lhu(3, 2, 0x24),
+        enc_addi(4, 0, 7),
+        enc_beq(3, 4, 8),
+        enc_jal(0, 8),
+        enc_ori(7, 7, 0x08),
+
+        enc_sw(7, 2, 0x00),         # GPIO = 0x0F if all checks passed
+        EBREAK,
+    ]
+
+    assert len(words) <= 32
+
+    await run_program_and_check_gpio(
+        dut,
+        name="CORE LB/LH/LBU/LHU/SB/SH",
+        words=words,
+        expected_gpio=0x0F,
+        cycles=520,
+    )
+
 async def subtest_core_branch_jump_regfile(dut):
     words = [
         enc_addi(1, 0, 5),
@@ -1246,6 +1366,7 @@ async def test_project(dut):
     await subtest_core_shift_immediates(dut)
     await subtest_core_shift_registers(dut)
     await subtest_core_auipc(dut)
+    await subtest_core_byte_half_load_store(dut)
     await subtest_core_branch_jump_regfile(dut)
     await subtest_uart_tx(dut)
 

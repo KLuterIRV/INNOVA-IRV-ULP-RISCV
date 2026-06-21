@@ -380,19 +380,71 @@ module irv_core (
     // Peripheral/MMIO request generation
     // ---------------------------------------------------------------------
 
+    wire valid_load_funct3;
+    wire valid_store_funct3;
+
+    assign valid_load_funct3 =
+        (funct3 == 3'b000) || // LB
+        (funct3 == 3'b001) || // LH
+        (funct3 == 3'b010) || // LW
+        (funct3 == 3'b100) || // LBU
+        (funct3 == 3'b101);   // LHU
+
+    assign valid_store_funct3 =
+        (funct3 == 3'b000) || // SB
+        (funct3 == 3'b001) || // SH
+        (funct3 == 3'b010);   // SW
+
     assign periph_store_en = (state == S_EXEC) &&
                              (opcode == 7'b0100011) &&
-                             (funct3 == 3'b010);
+                             valid_store_funct3;
 
     assign periph_load_en  = (state == S_EXEC) &&
                              (opcode == 7'b0000011) &&
-                             (funct3 == 3'b010);
+                             valid_load_funct3;
 
     // ULP/area optimization:
-    // Reuse the ALU ADD path for LW/SW MMIO address generation.
+    // Reuse the ALU ADD path for load/store MMIO address generation.
     // For LOAD, alu_b = imm_i. For STORE, alu_b = imm_s.
     assign periph_addr  = alu_y;
+
+    // Current MMIO peripherals consume the low byte. Keeping the full rs2 value
+    // allows SB/SH/SW to share the same bus path without extra byte-lane logic.
     assign periph_wdata = rs2_val;
+
+    // ---------------------------------------------------------------------
+    // Load data formatting
+    // ---------------------------------------------------------------------
+    //
+    // The current SoC exposes MMIO registers through a 32-bit read bus.
+    // Byte/halfword loads select the requested lane from periph_rdata and
+    // apply RV32I sign/zero extension rules.
+    //
+    // Misaligned accesses are not trapped in this minimal core.
+
+    wire [7:0]  load_byte;
+    wire [15:0] load_half;
+    reg  [31:0] load_rdata;
+
+    assign load_byte =
+        (periph_addr[1:0] == 2'b00) ? periph_rdata[7:0]   :
+        (periph_addr[1:0] == 2'b01) ? periph_rdata[15:8]  :
+        (periph_addr[1:0] == 2'b10) ? periph_rdata[23:16] :
+                                      periph_rdata[31:24];
+
+    assign load_half = periph_addr[1] ? periph_rdata[31:16] :
+                                        periph_rdata[15:0];
+
+    always @(*) begin
+        case (funct3)
+            3'b000: load_rdata = {{24{load_byte[7]}}, load_byte};   // LB
+            3'b001: load_rdata = {{16{load_half[15]}}, load_half};  // LH
+            3'b010: load_rdata = periph_rdata;                      // LW
+            3'b100: load_rdata = {24'd0, load_byte};                // LBU
+            3'b101: load_rdata = {16'd0, load_half};                // LHU
+            default: load_rdata = 32'd0;
+        endcase
+    end
 
     // ---------------------------------------------------------------------
     // Register file writeback generation
@@ -472,11 +524,11 @@ module irv_core (
                     end
                 end
 
-                // LOAD: minimal memory-mapped peripheral reads
+                // LOAD: LB / LH / LW / LBU / LHU
                 7'b0000011: begin
-                    if ((funct3 == 3'b010) && (rd != 5'd0)) begin
+                    if (valid_load_funct3 && (rd != 5'd0)) begin
                         rd_we    = 1'b1;
-                        rd_wdata = periph_rdata;
+                        rd_wdata = load_rdata;
                     end
                 end
 
