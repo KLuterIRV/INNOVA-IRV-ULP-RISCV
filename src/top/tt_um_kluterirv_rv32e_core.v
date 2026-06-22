@@ -287,20 +287,17 @@ module tt_um_kluterirv_rv32e_core (
            : (boot_mode ? boot_debug_byte : gpio0_out))
         : 8'd0;
 
-    // Run-mode bidirectional pins:
-    //   uio[0] = UART TX
-    //   uio[1] = UART RX input
-    //   uio[2] = I2C SCL open-drain
-    //   uio[3] = I2C SDA open-drain
+    // TinyTapeout bidirectional pins:
+    //   uio[0] = UART TX in run mode, boot_data[0] / boot_addr[7] in reset
+    //   uio[1] = UART RX input in run mode, boot_data[1] in reset
+    //   uio[2] = I2C SCL open-drain in run mode, boot_data[2] in reset
+    //   uio[3] = I2C SDA open-drain in run mode, boot_data[3] in reset
     //
-    // During boot/reset, all uio outputs are disabled so an external loader can
-    // safely drive uio_in[7:0] as the SRAM boot data/address-extension bus.
-    // uio_out itself does not need a boot mux because uio_oe=0 releases pins.
-    wire [7:0] run_uio_oe;
-
-    assign uio_out    = {4'd0, i2c0_sda_out, i2c0_scl_out, 1'b0, uart0_tx};
-    assign run_uio_oe = {4'd0, i2c0_sda_oe,  i2c0_scl_oe,  1'b0, 1'b1};
-    assign uio_oe     = boot_mode ? 8'd0 : run_uio_oe;
+    // Keep the proven direct mapping for routing stability.
+    // Only UART TX output-enable is gated by rst_n so the external boot loader
+    // can safely drive uio[0] while reset is asserted.
+    assign uio_out = {4'd0, i2c0_sda_out, i2c0_scl_out, 1'b0, uart0_tx};
+    assign uio_oe  = {4'd0, i2c0_sda_oe,  i2c0_scl_oe,  1'b0, rst_n};
 
     // Keep halted visible to lint even when not externally muxed.
     wire unused_top_halted;
