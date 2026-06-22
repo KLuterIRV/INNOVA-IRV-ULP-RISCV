@@ -287,8 +287,22 @@ module tt_um_kluterirv_rv32e_core (
            : (boot_mode ? boot_debug_byte : gpio0_out))
         : 8'd0;
 
-    assign uio_out = {4'd0, i2c0_sda_out, i2c0_scl_out, 1'b0, uart0_tx};
-    assign uio_oe  = {4'd0, i2c0_sda_oe,  i2c0_scl_oe,  1'b0, 1'b1};
+    // Run-mode bidirectional pins:
+    //   uio[0] = UART TX
+    //   uio[1] = UART RX input
+    //   uio[2] = I2C SCL open-drain
+    //   uio[3] = I2C SDA open-drain
+    //
+    // During boot/reset, all uio pins are released so an external loader can
+    // safely drive uio_in[7:0] as the SRAM boot data/address-extension bus.
+    wire [7:0] run_uio_out;
+    wire [7:0] run_uio_oe;
+
+    assign run_uio_out = {4'd0, i2c0_sda_out, i2c0_scl_out, 1'b0, uart0_tx};
+    assign run_uio_oe  = {4'd0, i2c0_sda_oe,  i2c0_scl_oe,  1'b0, 1'b1};
+
+    assign uio_out = boot_mode ? 8'd0 : run_uio_out;
+    assign uio_oe  = boot_mode ? 8'd0 : run_uio_oe;
 
     // Keep halted visible to lint even when not externally muxed.
     wire unused_top_halted;
