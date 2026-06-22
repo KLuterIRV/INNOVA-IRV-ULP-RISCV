@@ -311,6 +311,16 @@ module irv_core (
     assign imm_j_pc       = imm_j[PC_WIDTH-1:0];
     assign jalr_target_pc = jalr_target[PC_WIDTH-1:0];
 
+    // The physical program memory is 256 bytes, so the implemented PC only
+    // uses PC_WIDTH low bits. High architectural bits intentionally wrap inside
+    // the implemented program memory.
+    wire unused_core_pc_high_bits;
+    assign unused_core_pc_high_bits = |{
+        imm_b[31:PC_WIDTH],
+        imm_j[31:PC_WIDTH],
+        jalr_target[31:PC_WIDTH]
+    };
+
     irv_pc_ctrl #(
         .PC_WIDTH    (PC_WIDTH)
     ) u_pc_ctrl (
