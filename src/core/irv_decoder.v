@@ -33,12 +33,6 @@ module irv_decoder (
     output wire [31:0] imm_u,
     output wire [31:0] imm_j,
 
-    output wire        is_lui,
-    output wire        is_auipc,
-    output wire        is_op_imm,
-    output wire        is_op,
-    output wire        is_load,
-    output wire        is_store,
     output wire        is_branch,
     output wire        is_jal,
     output wire        is_jalr,
@@ -84,12 +78,6 @@ module irv_decoder (
         1'b0
     };
 
-    assign is_lui    = (opcode == 7'b0110111);
-    assign is_auipc  = (opcode == 7'b0010111);
-    assign is_op_imm = (opcode == 7'b0010011);
-    assign is_op     = (opcode == 7'b0110011);
-    assign is_load   = (opcode == 7'b0000011);
-    assign is_store  = (opcode == 7'b0100011);
     assign is_branch = (opcode == 7'b1100011);
     assign is_jal    = (opcode == 7'b1101111);
     assign is_jalr   = (opcode == 7'b1100111) && (funct3 == 3'b000);

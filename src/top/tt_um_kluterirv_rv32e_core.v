@@ -69,13 +69,11 @@ module tt_um_kluterirv_rv32e_core (
 
     wire        periph_load_en;
     wire        periph_store_en;
-    wire [31:0] periph_addr;
-    wire [31:0] periph_wdata;
-    wire [31:0] periph_rdata;
+    wire [7:0]  periph_addr;
+    wire [7:0]  periph_wdata;
+    wire [7:0]  periph_rdata;
     wire        periph_stall;
 
-    wire [31:0] pc_debug;
-    wire [31:0] instr_debug;
     wire        core_halted;
 
     // ---------------------------------------------------------------------
@@ -170,8 +168,6 @@ module tt_um_kluterirv_rv32e_core (
 
         .irq_pending      (irq_pending),
 
-        .pc_debug         (pc_debug),
-        .instr_debug      (instr_debug),
         .halted           (core_halted)
     );
 
@@ -294,10 +290,9 @@ module tt_um_kluterirv_rv32e_core (
     assign uio_out = {4'd0, i2c0_sda_out, i2c0_scl_out, 1'b0, uart0_tx};
     assign uio_oe  = {4'd0, i2c0_sda_oe,  i2c0_scl_oe,  1'b0, 1'b1};
 
-    // Debug/status signals are intentionally kept for future test visibility.
-    // Use all bits so lint does not report partially-unused debug buses.
-    wire unused_top_debug;
-    assign unused_top_debug = core_halted | (|pc_debug) | (|instr_debug);
+    // Keep halted visible to lint even when not externally muxed.
+    wire unused_top_halted;
+    assign unused_top_halted = core_halted;
 
 endmodule
 

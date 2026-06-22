@@ -23,9 +23,9 @@ module irv_pc_ctrl #(
 ) (
     input  wire [PC_WIDTH-1:0] pc,
 
-    input  wire [31:0] imm_b,
-    input  wire [31:0] imm_j,
-    input  wire [31:0] jalr_target,
+    input  wire [PC_WIDTH-1:0] imm_b,
+    input  wire [PC_WIDTH-1:0] imm_j,
+    input  wire [PC_WIDTH-1:0] jalr_target,
 
     input  wire        is_ebreak,
     input  wire        is_jal,
@@ -44,16 +44,6 @@ module irv_pc_ctrl #(
     // JALR clears target bit 0 by definition. Keep this bit visible to lint.
     wire unused_jalr_target_lsb;
     assign unused_jalr_target_lsb = jalr_target[0];
-
-    // The physical PC only implements the low PC_WIDTH bits.
-    // The high architectural bits are intentionally ignored and wrap inside
-    // the implemented program memory.
-    wire unused_pcctrl_high_bits;
-    assign unused_pcctrl_high_bits = |{
-        imm_b[31:8],
-        imm_j[31:8],
-        jalr_target[31:8]
-    };
 
     // PC updates only when the instruction is not halted and not stalled.
     assign pc_we = !is_ebreak && !stall;

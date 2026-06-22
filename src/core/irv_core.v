@@ -34,9 +34,9 @@ module irv_core (
     // Peripheral/MMIO bus.
     output wire        periph_load_en,
     output wire        periph_store_en,
-    output wire [31:0] periph_addr,
-    output wire [31:0] periph_wdata,
-    input  wire [31:0] periph_rdata,
+    output wire [7:0]  periph_addr,
+    output wire [7:0]  periph_wdata,
+    input  wire [7:0]  periph_rdata,
     input  wire        periph_stall,
 
     // Minimal interrupt inputs:
@@ -46,8 +46,6 @@ module irv_core (
     input  wire [2:0]  irq_pending,
 
     // Debug/status.
-    output wire [31:0] pc_debug,
-    output wire [31:0] instr_debug,
     output wire        halted
 );
 
@@ -72,10 +70,8 @@ module irv_core (
     wire [31:0] instr_reg;
     wire [31:0] pc_ext;
 
-    assign pc_ext      = {{(32-PC_WIDTH){1'b0}}, pc};
-    assign halted      = halted_r;
-    assign pc_debug    = pc_ext;
-    assign instr_debug = instr_reg;
+    assign pc_ext = {{(32-PC_WIDTH){1'b0}}, pc};
+    assign halted = halted_r;
 
     // ---------------------------------------------------------------------
     // Decode
@@ -94,12 +90,6 @@ module irv_core (
     wire [31:0] imm_b;
     wire [31:0] imm_j;
 
-    wire is_lui;
-    wire is_auipc;
-    wire is_op_imm;
-    wire is_op;
-    wire is_load;
-    wire is_store;
     wire is_branch;
     wire is_jal;
     wire is_jalr;
@@ -122,12 +112,6 @@ module irv_core (
         .imm_u     (imm_u),
         .imm_j     (imm_j),
 
-        .is_lui    (is_lui),
-        .is_auipc  (is_auipc),
-        .is_op_imm (is_op_imm),
-        .is_op     (is_op),
-        .is_load   (is_load),
-        .is_store  (is_store),
         .is_branch (is_branch),
         .is_jal    (is_jal),
         .is_jalr   (is_jalr),
@@ -135,10 +119,6 @@ module irv_core (
         .is_ebreak (is_ebreak)
     );
 
-    wire unused_decoder_fields;
-    assign unused_decoder_fields = is_lui | is_auipc | is_op_imm | is_op | is_load |
-                                   is_store | is_branch | is_jal | is_jalr |
-                                   is_wfi | (|funct7);
 
     // ---------------------------------------------------------------------
     // Register file
@@ -320,18 +300,25 @@ module irv_core (
     wire        pc_halt_req;
 
     wire [31:0] jalr_target;
+    wire [PC_WIDTH-1:0] imm_b_pc;
+    wire [PC_WIDTH-1:0] imm_j_pc;
+    wire [PC_WIDTH-1:0] jalr_target_pc;
+
     // Reuse ALU ADD path for JALR target instead of instantiating
     // an extra 32-bit adder: JALR target = rs1 + imm_i.
-    assign jalr_target = alu_y;
+    assign jalr_target    = alu_y;
+    assign imm_b_pc       = imm_b[PC_WIDTH-1:0];
+    assign imm_j_pc       = imm_j[PC_WIDTH-1:0];
+    assign jalr_target_pc = jalr_target[PC_WIDTH-1:0];
 
     irv_pc_ctrl #(
         .PC_WIDTH    (PC_WIDTH)
     ) u_pc_ctrl (
         .pc           (pc),
 
-        .imm_b        (imm_b),
-        .imm_j        (imm_j),
-        .jalr_target  (jalr_target),
+        .imm_b        (imm_b_pc),
+        .imm_j        (imm_j_pc),
+        .jalr_target  (jalr_target_pc),
 
         .is_ebreak    (is_ebreak),
         .is_jal       (is_jal),
@@ -410,13 +397,13 @@ module irv_core (
                              valid_load_funct3;
 
     // ULP/area optimization:
-    // Reuse the ALU ADD path for load/store MMIO address generation.
-    // For LOAD, alu_b = imm_i. For STORE, alu_b = imm_s.
-    assign periph_addr  = alu_y;
+    // Reuse the ALU ADD path for load/store MMIO address generation, but only
+    // export the implemented low MMIO offset byte to the peripheral bus.
+    assign periph_addr  = alu_y[7:0];
 
-    // Current MMIO peripherals consume the low byte. Keeping the full rs2 value
-    // allows SB/SH/SW to share the same bus path without extra byte-lane logic.
-    assign periph_wdata = rs2_val;
+    // Current MMIO peripherals are 8-bit registers. SB/SH/SW intentionally
+    // share the same low-byte write path in this tiny MMIO-oriented SoC.
+    assign periph_wdata = rs2_val[7:0];
 
     // ---------------------------------------------------------------------
     // Load data formatting
@@ -428,26 +415,15 @@ module irv_core (
     //
     // Misaligned accesses are not trapped in this minimal core.
 
-    wire [7:0]  load_byte;
-    wire [15:0] load_half;
-    reg  [31:0] load_rdata;
-
-    assign load_byte =
-        (periph_addr[1:0] == 2'b00) ? periph_rdata[7:0]   :
-        (periph_addr[1:0] == 2'b01) ? periph_rdata[15:8]  :
-        (periph_addr[1:0] == 2'b10) ? periph_rdata[23:16] :
-                                      periph_rdata[31:24];
-
-    assign load_half = periph_addr[1] ? periph_rdata[31:16] :
-                                        periph_rdata[15:0];
+    reg [31:0] load_rdata;
 
     always @(*) begin
         case (funct3)
-            3'b000: load_rdata = {{24{load_byte[7]}}, load_byte};   // LB
-            3'b001: load_rdata = {{16{load_half[15]}}, load_half};  // LH
-            3'b010: load_rdata = periph_rdata;                      // LW
-            3'b100: load_rdata = {24'd0, load_byte};                // LBU
-            3'b101: load_rdata = {16'd0, load_half};                // LHU
+            3'b000: load_rdata = {{24{periph_rdata[7]}}, periph_rdata}; // LB
+            3'b001: load_rdata = {24'd0, periph_rdata};                 // LH on 8-bit MMIO
+            3'b010: load_rdata = {24'd0, periph_rdata};                 // LW on 8-bit MMIO
+            3'b100: load_rdata = {24'd0, periph_rdata};                 // LBU
+            3'b101: load_rdata = {24'd0, periph_rdata};                 // LHU on 8-bit MMIO
             default: load_rdata = 32'd0;
         endcase
     end
