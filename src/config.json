@@ -15,16 +15,16 @@
         "u_sram128x16.u_mem_b0": {
           "location": [
             5,
-            28
+            5
           ],
-          "orientation": "N"
+          "orientation": "FS"
         },
         "u_sram128x16.u_mem_b1": {
           "location": [
             995,
-            28
+            5
           ],
-          "orientation": "N"
+          "orientation": "FS"
         }
       },
       "gds": [
