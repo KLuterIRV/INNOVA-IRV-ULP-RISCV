@@ -561,6 +561,69 @@ async def drive_uart_rx_two_bytes(dut, value_a, value_b):
     await drive_uart_rx_byte(dut, value_b, start_delay=4)
 
 
+
+
+# -----------------------------------------------------------------------------
+# I2C dynamic slave helpers
+# -----------------------------------------------------------------------------
+
+def i2c_uio_value(sda=1):
+    # uio_in[1] = UART RX idle high
+    # uio_in[2] = I2C SCL input high
+    # uio_in[3] = I2C SDA input provided by test slave
+    return 0x06 | ((sda & 0x1) << 3)
+
+
+async def set_i2c_slave_sda_midcycle(dut, bit):
+    # Change SDA away from the DUT sampling edge.
+    await FallingEdge(dut.clk)
+    await Timer(1, unit="ns")
+    dut.uio_in.value = i2c_uio_value(sda=bit)
+
+
+async def wait_i2c_scl_oe(dut, expected, timeout_cycles=3000):
+    # uio_oe[2] is the I2C SCL open-drain output enable.
+    # 1 = master drives SCL low
+    # 0 = master releases SCL high
+    for _ in range(timeout_cycles):
+        try:
+            oe = int(dut.uio_oe.value)
+        except ValueError:
+            await ClockCycles(dut.clk, 1)
+            continue
+
+        if ((oe >> 2) & 0x1) == expected:
+            return
+
+        await ClockCycles(dut.clk, 1)
+
+    raise AssertionError(f"Timed out waiting for I2C SCL OE={expected}")
+
+
+async def drive_i2c_read_byte(dut, value):
+    # Simple cocotb I2C read slave.
+    #
+    # It waits for each SCL-low phase before the master samples a read bit,
+    # drives SDA to the requested value, then waits for SCL release.
+    #
+    # This helper is intended for RTL functional testing. GLS keeps simpler
+    # static ACK/NACK I2C tests.
+    await set_i2c_slave_sda_midcycle(dut, 1)
+
+    for bit_index in range(7, -1, -1):
+        bit = (value >> bit_index) & 0x1
+
+        # Master pulls SCL low before sampling this bit.
+        await wait_i2c_scl_oe(dut, 1)
+        await set_i2c_slave_sda_midcycle(dut, bit)
+
+        # Master releases SCL high and samples sda_in.
+        await wait_i2c_scl_oe(dut, 0)
+
+    # Release SDA after byte transfer.
+    await set_i2c_slave_sda_midcycle(dut, 1)
+
+
 # -----------------------------------------------------------------------------
 # Core tests
 # -----------------------------------------------------------------------------
@@ -847,61 +910,6 @@ async def subtest_core_auipc(dut):
     )
 
 
-async def subtest_core_byte_half_load_store(dut):
-    # Validate RV32I byte/halfword MMIO load/store decode:
-    #   SB, SH, LB, LH, LBU, LHU.
-    #
-    # IRQ_ENABLE at 0x1000_0024 is used as a small readable/writable MMIO
-    # register. Only low bits are implemented, which is enough to verify that
-    # the new access sizes reach the peripheral bus and load formatter.
-
-    words = [
-        enc_lui(2, 0x10000),        # x2 = MMIO base
-        enc_addi(7, 0, 0),          # x7 = accumulator
-
-        enc_addi(1, 0, 5),
-        enc_sb(1, 2, 0x24),         # IRQ_ENABLE = 5
-        enc_lbu(3, 2, 0x24),
-        enc_addi(4, 0, 5),
-        enc_beq(3, 4, 8),
-        enc_jal(0, 8),
-        enc_ori(7, 7, 0x01),
-
-        enc_addi(1, 0, 3),
-        enc_sh(1, 2, 0x24),         # IRQ_ENABLE = 3
-        enc_lh(3, 2, 0x24),
-        enc_addi(4, 0, 3),
-        enc_beq(3, 4, 8),
-        enc_jal(0, 8),
-        enc_ori(7, 7, 0x02),
-
-        enc_addi(1, 0, 7),
-        enc_sw(1, 2, 0x24),         # IRQ_ENABLE = 7
-        enc_lb(3, 2, 0x24),
-        enc_addi(4, 0, 7),
-        enc_beq(3, 4, 8),
-        enc_jal(0, 8),
-        enc_ori(7, 7, 0x04),
-
-        enc_lhu(3, 2, 0x24),
-        enc_addi(4, 0, 7),
-        enc_beq(3, 4, 8),
-        enc_jal(0, 8),
-        enc_ori(7, 7, 0x08),
-
-        enc_sw(7, 2, 0x00),         # GPIO = 0x0F if all checks passed
-        EBREAK,
-    ]
-
-    assert len(words) <= 32
-
-    await run_program_and_check_gpio(
-        dut,
-        name="CORE LB/LH/LBU/LHU/SB/SH",
-        words=words,
-        expected_gpio=0x0F,
-        cycles=520,
-    )
 
 async def subtest_core_branch_jump_regfile(dut):
     words = [
@@ -1352,6 +1360,160 @@ async def subtest_irq_i2c_done(dut):
     )
 
 
+
+async def subtest_core_high_program_memory(dut):
+    # Validate 256-byte program SRAM path.
+    #
+    # PC 0x00:
+    #   JAL x0, +0x80
+    #
+    # PC 0x80:
+    #   GPIO = 0x7E
+    #
+    # This checks:
+    #   - boot address bit 7
+    #   - PC_WIDTH=8 execution
+    #   - fetch from upper half of program memory
+
+    words = [
+        enc_jal(0, 0x80),
+    ]
+
+    while len(words) < 32:
+        words.append(enc_nop())
+
+    words += [
+        enc_lui(2, 0x10000),
+        enc_addi(4, 0, 0x7E),
+        enc_sw(4, 2, 0x00),
+        EBREAK,
+    ]
+
+    assert len(words) <= 64
+
+    await run_program_and_check_gpio(
+        dut,
+        name="CORE high program memory PC 0x80",
+        words=words,
+        expected_gpio=0x7E,
+        cycles=300,
+    )
+
+
+async def subtest_uart_printf_ok(dut):
+    # Validate a small printf-like UART TX sequence.
+    #
+    # Firmware sends:
+    #   "OK\n"
+
+    words = [
+        enc_lui(2, 0x10000),
+
+        enc_addi(4, 0, ord("O")),
+        enc_sw(4, 2, 0x04),
+        enc_lw(5, 2, 0x08),
+        enc_andi(5, 5, 0x01),
+        enc_bne(5, 0, -8),
+
+        enc_addi(4, 0, ord("K")),
+        enc_sw(4, 2, 0x04),
+        enc_lw(5, 2, 0x08),
+        enc_andi(5, 5, 0x01),
+        enc_bne(5, 0, -8),
+
+        enc_addi(4, 0, 0x0A),
+        enc_sw(4, 2, 0x04),
+
+        EBREAK,
+    ]
+
+    assert len(words) <= 64
+
+    dut._log.info("========== UART printf OK ==========")
+
+    await reset_and_program(dut, words, run_uio_in=0x0E)
+    await release_reset_safe(dut)
+
+    expected = [ord("O"), ord("K"), 0x0A]
+    observed = []
+
+    for _ in expected:
+        observed.append(await read_uart_tx_byte(dut, clks_per_bit=8, timeout_cycles=2500))
+
+    dut._log.info("UART printf bytes = " + " ".join(f"0x{x:02x}" for x in observed))
+    assert observed == expected, f"Expected UART bytes {expected}, got {observed}"
+
+
+async def subtest_i2c_read_byte(dut):
+    # Validate I2C READ_BYTE engine using a simple dynamic cocotb slave.
+    #
+    # The fake slave returns 0xA5. Firmware reads I2C DATA and writes it to GPIO.
+
+    words = [
+        enc_lui(2, 0x10000),
+
+        enc_addi(4, 0, 1),
+        enc_sw(4, 2, 0x1C),         # I2C DIV = 1
+
+        enc_addi(4, 0, 0x0B),
+        enc_sw(4, 2, 0x10),         # CTRL = START + STOP + READ
+
+    ] + wait_loop_program(count_reg=1, count=36) + [
+        enc_lw(4, 2, 0x14),         # I2C DATA
+        enc_sw(4, 2, 0x00),         # GPIO = read byte
+        EBREAK,
+    ]
+
+    assert len(words) <= 64
+
+    await run_program_and_check_gpio(
+        dut,
+        name="I2C READ byte",
+        words=words,
+        expected_gpio=0xA5,
+        cycles=700,
+        run_uio_in=0x0E,
+        concurrent_task=drive_i2c_read_byte(dut, 0xA5),
+    )
+
+
+async def subtest_system_i2c_to_uart(dut):
+    # Functional system path:
+    #
+    #   fake I2C sensor -> I2C DATA -> CPU -> UART TX
+    #
+    # The fake sensor returns 0x5A. Firmware sends that byte through UART.
+
+    words = [
+        enc_lui(2, 0x10000),
+
+        enc_addi(4, 0, 1),
+        enc_sw(4, 2, 0x1C),         # I2C DIV = 1
+
+        enc_addi(4, 0, 0x0B),
+        enc_sw(4, 2, 0x10),         # CTRL = START + STOP + READ
+
+    ] + wait_loop_program(count_reg=1, count=36) + [
+        enc_lw(4, 2, 0x14),         # x4 = I2C DATA
+        enc_sw(4, 2, 0x04),         # UART TX = x4
+        EBREAK,
+    ]
+
+    assert len(words) <= 64
+
+    dut._log.info("========== SYSTEM I2C read to UART TX ==========")
+
+    await reset_and_program(dut, words, run_uio_in=0x0E)
+
+    cocotb.start_soon(drive_i2c_read_byte(dut, 0x5A))
+
+    await release_reset_safe(dut)
+
+    observed = await read_uart_tx_byte(dut, clks_per_bit=8, timeout_cycles=3500)
+
+    dut._log.info(f"SYSTEM I2C->UART byte = 0x{observed:02x}")
+    assert observed == 0x5A, f"Expected UART byte 0x5A from I2C path, got 0x{observed:02x}"
+
 # -----------------------------------------------------------------------------
 # Single cocotb entry point
 # -----------------------------------------------------------------------------
@@ -1375,9 +1537,10 @@ async def test_project(dut):
     await subtest_core_shift_immediates(dut)
     await subtest_core_shift_registers(dut)
     await subtest_core_auipc(dut)
-    await subtest_core_byte_half_load_store(dut)
+    await subtest_core_high_program_memory(dut)
     await subtest_core_branch_jump_regfile(dut)
     await subtest_uart_tx(dut)
+    await subtest_uart_printf_ok(dut)
 
     if gls:
         dut._log.info("GLS mode: skipping asynchronous UART RX subtests; covered in RTL")
@@ -1388,6 +1551,12 @@ async def test_project(dut):
     await subtest_i2c_write_ack(dut)
     await subtest_i2c_write_nack(dut)
     await subtest_irq_i2c_done(dut)
+
+    if gls:
+        dut._log.info("GLS mode: skipping dynamic I2C slave system tests; covered in RTL")
+    else:
+        await subtest_i2c_read_byte(dut)
+        await subtest_system_i2c_to_uart(dut)
 
     if gls:
         dut._log.info("GLS mode: skipping UART-RX-driven IRQ subtests; covered in RTL")

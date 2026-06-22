@@ -39,7 +39,7 @@ module uart0 #(
         TX_STOP  = 3'd3;
 
     reg [2:0]  tx_state;
-    reg [7:0]  tx_clk_count;
+    reg [2:0]  tx_clk_count;
     reg [2:0]  tx_bit_index;
     reg [7:0]  tx_shift;
     reg        tx_reg;
@@ -50,7 +50,7 @@ module uart0 #(
     always @(posedge clk) begin
         if (rst) begin
             tx_state     <= TX_IDLE;
-            tx_clk_count <= 8'd0;
+            tx_clk_count <= 3'd0;
             tx_bit_index <= 3'd0;
             tx_shift     <= 8'd0;
             tx_reg       <= 1'b1;
@@ -59,7 +59,7 @@ module uart0 #(
 
                 TX_IDLE: begin
                     tx_reg       <= 1'b1;
-                    tx_clk_count <= 8'd0;
+                    tx_clk_count <= 3'd0;
                     tx_bit_index <= 3'd0;
 
                     if (tx_start) begin
@@ -71,19 +71,19 @@ module uart0 #(
                 TX_START: begin
                     tx_reg <= 1'b0;
 
-                    if (tx_clk_count == (CLKS_PER_BIT - 1)) begin
-                        tx_clk_count <= 8'd0;
+                    if (tx_clk_count == 3'd7) begin
+                        tx_clk_count <= 3'd0;
                         tx_state     <= TX_DATA;
                     end else begin
-                        tx_clk_count <= tx_clk_count + 8'd1;
+                        tx_clk_count <= tx_clk_count + 3'd1;
                     end
                 end
 
                 TX_DATA: begin
                     tx_reg <= tx_shift[tx_bit_index];
 
-                    if (tx_clk_count == (CLKS_PER_BIT - 1)) begin
-                        tx_clk_count <= 8'd0;
+                    if (tx_clk_count == 3'd7) begin
+                        tx_clk_count <= 3'd0;
 
                         if (tx_bit_index == 3'd7) begin
                             tx_bit_index <= 3'd0;
@@ -92,18 +92,18 @@ module uart0 #(
                             tx_bit_index <= tx_bit_index + 3'd1;
                         end
                     end else begin
-                        tx_clk_count <= tx_clk_count + 8'd1;
+                        tx_clk_count <= tx_clk_count + 3'd1;
                     end
                 end
 
                 TX_STOP: begin
                     tx_reg <= 1'b1;
 
-                    if (tx_clk_count == (CLKS_PER_BIT - 1)) begin
-                        tx_clk_count <= 8'd0;
+                    if (tx_clk_count == 3'd7) begin
+                        tx_clk_count <= 3'd0;
                         tx_state     <= TX_IDLE;
                     end else begin
-                        tx_clk_count <= tx_clk_count + 8'd1;
+                        tx_clk_count <= tx_clk_count + 3'd1;
                     end
                 end
 
@@ -139,7 +139,7 @@ module uart0 #(
         RX_DONE  = 3'd4;
 
     reg [2:0]  rx_state;
-    reg [7:0]  rx_clk_count;
+    reg [2:0]  rx_clk_count;
     reg [2:0]  rx_bit_index;
     reg [7:0]  rx_shift;
     reg [7:0]  rx_data_reg;
@@ -156,7 +156,7 @@ module uart0 #(
     always @(posedge clk) begin
         if (rst) begin
             rx_state     <= RX_IDLE;
-            rx_clk_count <= 8'd0;
+            rx_clk_count <= 3'd0;
             rx_bit_index <= 3'd0;
             rx_shift     <= 8'd0;
             rx_data_reg     <= 8'd0;
@@ -177,7 +177,7 @@ module uart0 #(
             case (rx_state)
 
                 RX_IDLE: begin
-                    rx_clk_count <= 8'd0;
+                    rx_clk_count <= 3'd0;
                     rx_bit_index <= 3'd0;
 
                     // Start bit detection.
@@ -188,21 +188,21 @@ module uart0 #(
 
                 RX_START: begin
                     // Sample in the middle of the start bit.
-                    if (rx_clk_count == ((CLKS_PER_BIT / 2) - 1)) begin
+                    if (rx_clk_count == 3'd3) begin
                         if (rx_sync == 1'b0) begin
-                            rx_clk_count <= 8'd0;
+                            rx_clk_count <= 3'd0;
                             rx_state     <= RX_DATA;
                         end else begin
                             rx_state <= RX_IDLE;
                         end
                     end else begin
-                        rx_clk_count <= rx_clk_count + 8'd1;
+                        rx_clk_count <= rx_clk_count + 3'd1;
                     end
                 end
 
                 RX_DATA: begin
-                    if (rx_clk_count == (CLKS_PER_BIT - 1)) begin
-                        rx_clk_count <= 8'd0;
+                    if (rx_clk_count == 3'd7) begin
+                        rx_clk_count <= 3'd0;
                         rx_shift[rx_bit_index] <= rx_sync;
 
                         if (rx_bit_index == 3'd7) begin
@@ -212,13 +212,13 @@ module uart0 #(
                             rx_bit_index <= rx_bit_index + 3'd1;
                         end
                     end else begin
-                        rx_clk_count <= rx_clk_count + 8'd1;
+                        rx_clk_count <= rx_clk_count + 3'd1;
                     end
                 end
 
                 RX_STOP: begin
-                    if (rx_clk_count == (CLKS_PER_BIT - 1)) begin
-                        rx_clk_count <= 8'd0;
+                    if (rx_clk_count == 3'd7) begin
+                        rx_clk_count <= 3'd0;
 
                         // Accept the byte only if stop bit is high.
                         if (rx_sync == 1'b1) begin
@@ -232,7 +232,7 @@ module uart0 #(
 
                         rx_state <= RX_DONE;
                     end else begin
-                        rx_clk_count <= rx_clk_count + 8'd1;
+                        rx_clk_count <= rx_clk_count + 3'd1;
                     end
                 end
 

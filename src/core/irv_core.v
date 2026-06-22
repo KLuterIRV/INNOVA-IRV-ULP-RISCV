@@ -383,60 +383,35 @@ module irv_core (
     // Peripheral/MMIO request generation
     // ---------------------------------------------------------------------
 
-    wire valid_load_funct3;
-    wire valid_store_funct3;
-
-    assign valid_load_funct3 =
-        (funct3 == 3'b000) || // LB
-        (funct3 == 3'b001) || // LH
-        (funct3 == 3'b010) || // LW
-        (funct3 == 3'b100) || // LBU
-        (funct3 == 3'b101);   // LHU
-
-    assign valid_store_funct3 =
-        (funct3 == 3'b000) || // SB
-        (funct3 == 3'b001) || // SH
-        (funct3 == 3'b010);   // SW
+    // Only LW/SW are implemented for the tiny MMIO bus.
+    //
+    // The SoC has no general data RAM. Current peripherals expose 8-bit
+    // registers, so SW writes rs2[7:0] and LW zero-extends the 8-bit MMIO
+    // read value to 32 bits.
+    //
+    // SB/SH/LB/LH/LBU/LHU were removed because they do not add useful
+    // functionality with the current 8-bit MMIO-only memory model.
 
     assign periph_store_en = (state == S_EXEC) &&
                              (opcode == 7'b0100011) &&
-                             valid_store_funct3;
+                             (funct3 == 3'b010); // SW
 
     assign periph_load_en  = (state == S_EXEC) &&
                              (opcode == 7'b0000011) &&
-                             valid_load_funct3;
+                             (funct3 == 3'b010); // LW
 
-    // ULP/area optimization:
-    // Reuse the ALU ADD path for load/store MMIO address generation, but only
-    // export the implemented low MMIO offset byte to the peripheral bus.
     assign periph_addr  = alu_y[7:0];
-
-    // Current MMIO peripherals are 8-bit registers. SB/SH/SW intentionally
-    // share the same low-byte write path in this tiny MMIO-oriented SoC.
     assign periph_wdata = rs2_val[7:0];
 
     // ---------------------------------------------------------------------
     // Load data formatting
     // ---------------------------------------------------------------------
     //
-    // The current SoC exposes MMIO registers through a 32-bit read bus.
-    // Byte/halfword loads select the requested lane from periph_rdata and
-    // apply RV32I sign/zero extension rules.
-    //
-    // Misaligned accesses are not trapped in this minimal core.
+    // MMIO reads return 8-bit peripheral registers.
+    // LW zero-extends the implemented MMIO byte to the 32-bit register file.
 
-    reg [31:0] load_rdata;
-
-    always @(*) begin
-        case (funct3)
-            3'b000: load_rdata = {{24{periph_rdata[7]}}, periph_rdata}; // LB
-            3'b001: load_rdata = {24'd0, periph_rdata};                 // LH on 8-bit MMIO
-            3'b010: load_rdata = {24'd0, periph_rdata};                 // LW on 8-bit MMIO
-            3'b100: load_rdata = {24'd0, periph_rdata};                 // LBU
-            3'b101: load_rdata = {24'd0, periph_rdata};                 // LHU on 8-bit MMIO
-            default: load_rdata = 32'd0;
-        endcase
-    end
+    wire [31:0] load_rdata;
+    assign load_rdata = {24'd0, periph_rdata};
 
     // ---------------------------------------------------------------------
     // Register file writeback generation
@@ -516,9 +491,9 @@ module irv_core (
                     end
                 end
 
-                // LOAD: LB / LH / LW / LBU / LHU
+                // LOAD: LW from 8-bit MMIO register, zero-extended
                 7'b0000011: begin
-                    if (valid_load_funct3 && (rd != 5'd0)) begin
+                    if ((funct3 == 3'b010) && (rd != 5'd0)) begin
                         rd_we    = 1'b1;
                         rd_wdata = load_rdata;
                     end
