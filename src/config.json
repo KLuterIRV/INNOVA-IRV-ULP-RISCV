@@ -14,7 +14,7 @@
       "instances": {
         "u_sram128x16.u_mem_b0": {
           "location": [
-            10,
+            5,
             28
           ],
           "orientation": "N"
