@@ -13,11 +13,17 @@
     "gf180mcu_fd_ip_sram__sram128x8m8wm1": {
       "instances": {
         "u_sram128x16.u_mem_b0": {
-          "location": [10,28],
+          "location": [
+            10,
+            28
+          ],
           "orientation": "N"
         },
         "u_sram128x16.u_mem_b1": {
-          "location": [995,28],
+          "location": [
+            995,
+            28
+          ],
           "orientation": "N"
         }
       },
@@ -68,5 +74,7 @@
   "RUN_CTS": 1,
   "FP_PDN_MULTILAYER": 0,
   "MAGIC_DEF_LABELS": 0,
-  "MAGIC_WRITE_LEF_PINONLY": 1
+  "MAGIC_WRITE_LEF_PINONLY": 1,
+  "RT_MIN_LAYER": "Metal1",
+  "RT_MAX_LAYER": "Metal4"
 }
