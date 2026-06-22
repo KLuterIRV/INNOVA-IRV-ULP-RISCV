@@ -24,35 +24,47 @@ module tt_um_kluterirv_rv32e_core (
     // Boot/programming interface while rst_n = 0:
     //
     // The 128x16 SRAM stores 256 bytes, so byte addressing requires 8 bits.
-    // TinyTapeout exposes ui_in[7:1] plus uio_in[7:0] during reset. To keep
-    // an 8-bit data path and a write-enable, the boot address MSB is latched
-    // in a non-write phase:
+    // TinyTapeout exposes ui_in[7:1] plus uio_in[7:0] during reset.
     //
-    //   phase A, latch addr[7]:
+    // To avoid any electrical contention on uio[0], which is UART TX in run
+    // mode and may remain output-enabled for GDS stability, the boot protocol
+    // intentionally does NOT use uio[0].
+    //
+    //   phase A, latch sideband bits:
     //     ui_in[0]   = 0
     //     ui_in[7:1] = addr[6:0]
-    //     uio_in[0]  = addr[7]
+    //     uio_in[7]  = addr[7]
+    //     uio_in[6]  = data[0]
     //     clk pulse
     //
     //   phase B, write byte:
-    //     ui_in[0]   = 1
-    //     ui_in[7:1] = addr[6:0]
-    //     uio_in     = byte data
+    //     ui_in[0]    = 1
+    //     ui_in[7:1]  = addr[6:0]
+    //     uio_in[7:1] = data[7:1]
+    //     uio[0]      = not driven by external loader
     //     clk pulse
     //
     // Normal reset keeps ui_in[0] = 0, so SRAM is preserved.
     wire       boot_we;
     reg        boot_addr_msb;
+    reg        boot_wdata_bit0;
     wire [7:0] boot_byte_addr;
+    wire [7:0] boot_wdata;
 
     assign boot_we        = ui_in[0];
     assign boot_byte_addr = {boot_addr_msb, ui_in[7:1]};
 
+    // boot_wdata[0] is latched in phase A so the external loader never needs
+    // to drive uio[0], which is UART TX on the ASIC side.
+    assign boot_wdata = {uio_in[7:1], boot_wdata_bit0};
+
     always @(posedge clk) begin
         if (!boot_mode) begin
-            boot_addr_msb <= 1'b0;
+            boot_addr_msb   <= 1'b0;
+            boot_wdata_bit0 <= 1'b0;
         end else if (!boot_we) begin
-            boot_addr_msb <= uio_in[0];
+            boot_addr_msb   <= uio_in[7];
+            boot_wdata_bit0 <= uio_in[6];
         end
     end
 
@@ -126,7 +138,7 @@ module tt_um_kluterirv_rv32e_core (
         .boot_mode       (boot_mode),
         .boot_we         (boot_we),
         .boot_byte_addr  (boot_byte_addr),
-        .boot_wdata      (uio_in),
+        .boot_wdata      (boot_wdata),
 
         .run_addr        (imem_addr),
         .run_rdata       (imem_rdata),
@@ -287,6 +299,14 @@ module tt_um_kluterirv_rv32e_core (
            : (boot_mode ? boot_debug_byte : gpio0_out))
         : 8'd0;
 
+    // TinyTapeout bidirectional pins:
+    //   uio[0] = UART TX
+    //   uio[1] = UART RX input
+    //   uio[2] = I2C SCL open-drain
+    //   uio[3] = I2C SDA open-drain
+    //
+    // For GDS stability, keep the proven direct output-enable mapping.
+    // The SRAM boot protocol avoids external driving of uio[0].
     assign uio_out = {4'd0, i2c0_sda_out, i2c0_scl_out, 1'b0, uart0_tx};
     assign uio_oe  = {4'd0, i2c0_sda_oe,  i2c0_scl_oe,  1'b0, 1'b1};
 

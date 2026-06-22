@@ -371,23 +371,36 @@ async def start_clock(dut):
 
 
 async def write_byte(dut, addr, data):
-    # 256-byte boot protocol:
-    # phase A: latch addr[7] while boot_we=0
-    # phase B: write data while boot_we=1
+    # 256-byte boot protocol without external driving of uio[0].
+    #
+    # phase A:
+    #   ui_in[0]   = 0
+    #   ui_in[7:1] = addr[6:0]
+    #   uio_in[7]  = addr[7]
+    #   uio_in[6]  = data[0]
+    #
+    # phase B:
+    #   ui_in[0]    = 1
+    #   ui_in[7:1]  = addr[6:0]
+    #   uio_in[7:1] = data[7:1]
+    #   uio_in[0]   = ignored by DUT
     addr = addr & 0xFF
+    data = data & 0xFF
+
+    phase_a_uio = (((addr >> 7) & 0x1) << 7) | ((data & 0x1) << 6)
+    phase_b_uio = data & 0xFE
 
     dut.ui_in.value = ((addr & 0x7F) << 1)
-    dut.uio_in.value = (addr >> 7) & 0x01
+    dut.uio_in.value = phase_a_uio
     await ClockCycles(dut.clk, 1)
 
     dut.ui_in.value = ((addr & 0x7F) << 1) | 1
-    dut.uio_in.value = data & 0xFF
+    dut.uio_in.value = phase_b_uio
     await ClockCycles(dut.clk, 1)
 
     dut.ui_in.value = ((addr & 0x7F) << 1)
     dut.uio_in.value = 0
     await ClockCycles(dut.clk, 1)
-
 
 async def program_sram(dut, words):
     program = []
@@ -1350,6 +1363,8 @@ async def subtest_irq_i2c_done(dut):
         # RX high, SCL high, SDA low -> ACK.
         run_uio_in=0x06,
     )
+
+
 
 
 # -----------------------------------------------------------------------------
