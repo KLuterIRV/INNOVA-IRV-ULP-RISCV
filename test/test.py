@@ -1352,6 +1352,30 @@ async def subtest_irq_i2c_done(dut):
     )
 
 
+
+async def subtest_boot_uio_outputs_disabled(dut):
+    # During SRAM boot/reset, all bidirectional outputs must be disabled so the
+    # external loader can safely drive uio_in[7:0].
+    dut._log.info("========== BOOT UIO high-Z check ==========")
+
+    await start_clock(dut)
+
+    dut.ena.value = 1
+    dut.rst_n.value = 0
+    dut.ui_in.value = 0
+    dut.uio_in.value = 0
+
+    await ClockCycles(dut.clk, 4)
+    await FallingEdge(dut.clk)
+    await Timer(1, unit="ns")
+
+    observed_oe = int(dut.uio_oe.value)
+    dut._log.info(f"BOOT uio_oe = 0x{observed_oe:02x}")
+
+    assert observed_oe == 0x00, (
+        f"Expected all UIO outputs disabled during boot, got uio_oe=0x{observed_oe:02x}"
+    )
+
 # -----------------------------------------------------------------------------
 # Single cocotb entry point
 # -----------------------------------------------------------------------------
@@ -1368,6 +1392,8 @@ async def test_project(dut):
     dut._log.info("Start INNOVA IRV split regression suite")
 
     gls = is_gate_level_sim(dut)
+
+    await subtest_boot_uio_outputs_disabled(dut)
 
     await subtest_core_alu_and_mmio(dut)
     await subtest_core_slt_sltu(dut)

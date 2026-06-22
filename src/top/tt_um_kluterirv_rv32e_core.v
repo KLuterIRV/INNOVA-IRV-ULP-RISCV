@@ -287,8 +287,21 @@ module tt_um_kluterirv_rv32e_core (
            : (boot_mode ? boot_debug_byte : gpio0_out))
         : 8'd0;
 
+    // Bidirectional pin use:
+    //   rst_n = 0 -> SRAM boot loader drives uio_in[7:0]
+    //   rst_n = 1 -> UART/I2C communication mode
+    //
+    // High impedance is controlled only through uio_oe.
+    // uio_out does not need a boot mux because uio_oe=0 releases the pins.
     assign uio_out = {4'd0, i2c0_sda_out, i2c0_scl_out, 1'b0, uart0_tx};
-    assign uio_oe  = {4'd0, i2c0_sda_oe,  i2c0_scl_oe,  1'b0, 1'b1};
+
+    assign uio_oe = {
+        4'b0000,              // uio[7:4] unused / boot inputs
+        rst_n & i2c0_sda_oe,  // uio[3] I2C SDA output-enable only in run mode
+        rst_n & i2c0_scl_oe,  // uio[2] I2C SCL output-enable only in run mode
+        1'b0,                 // uio[1] UART RX input
+        rst_n                 // uio[0] UART TX output-enable only in run mode
+    };
 
     // Keep halted visible to lint even when not externally muxed.
     wire unused_top_halted;
