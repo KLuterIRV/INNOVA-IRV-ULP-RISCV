@@ -45,6 +45,16 @@ module irv_pc_ctrl #(
     wire unused_jalr_target_lsb;
     assign unused_jalr_target_lsb = jalr_target[0];
 
+    // The physical PC only implements the low PC_WIDTH bits.
+    // The high architectural bits are intentionally ignored and wrap inside
+    // the implemented program memory.
+    wire unused_pcctrl_high_bits;
+    assign unused_pcctrl_high_bits = |{
+        imm_b[31:8],
+        imm_j[31:8],
+        jalr_target[31:8]
+    };
+
     // PC updates only when the instruction is not halted and not stalled.
     assign pc_we = !is_ebreak && !stall;
 
